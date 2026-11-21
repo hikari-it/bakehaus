@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment variables (WAJIB agar koneksi Supabase/DB aman)
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+
+# Vercel deployment config
+.vercel/
+**/.vercel/
+
+# Build outputs
+dist/
+build/
+**/dist/
+**/build/
+
+# Logs & OS files
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
