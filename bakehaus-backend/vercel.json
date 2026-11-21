@@ -7,12 +7,16 @@
     },
     {
       "source": "/",
-      "has": [{ "type": "host", "value": "bakehaus-pos.vercel.app" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "bakehaus-pos.vercel.app"
+        }
+      ],
       "destination": "/pos.html"
     },
     {
       "source": "/",
-      "has": [{ "type": "host", "value": "bakehaus-delivery.vercel.app" }],
       "destination": "/delivery.html"
     }
   ]
