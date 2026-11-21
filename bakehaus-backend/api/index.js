@@ -2,12 +2,27 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+const path = require('path');
 const db = require('../db');
 const { JWT_SECRET, optionalToken, requireRole } = require('../auth');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+app.get(['/api', '/api/health'], (req, res) => {
+  res.json({
+    status: 'OK',
+    service: 'Bake Haus POS & Delivery API',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/', (req, res) => {
+  const host = String(req.headers.host || '').toLowerCase();
+  const page = host.includes('pos') ? 'pos.html' : 'delivery.html';
+  res.sendFile(path.join(__dirname, '..', 'public', page));
+});
 
 // Helper: Generate No Struk & No Antrian Harian
 async function generateOrderMeta(client, idToko = 'T01', requestedNoStruk = null) {
