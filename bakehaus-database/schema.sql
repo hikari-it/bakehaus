@@ -1,8 +1,9 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 DROP VIEW IF EXISTS v_delivery_orders, v_menu_master, v_users_staff, v_transaksi_total;
+DROP TABLE IF EXISTS menu_label, addon_target_category, custom_labels, label_menu CASCADE;
 DROP TABLE IF EXISTS detail_delivery, pelanggan CASCADE;
 DROP TABLE IF EXISTS order_tersimpan_item, order_tersimpan, detail_transaksi, transaksi,
-                     users, menu, kategori_menu, metode_pembayaran, pos, karyawan, toko CASCADE;
+                     bakehaus_schema_migrations, users, menu, kategori_menu, metode_pembayaran, pos, karyawan, toko CASCADE;
 DROP FUNCTION IF EXISTS fn_kurangi_stok();
 CREATE TABLE toko (
     id_toko      VARCHAR(10)  PRIMARY KEY,
@@ -21,7 +22,7 @@ CREATE TABLE users (
     password_hash  TEXT        NOT NULL,
     role           VARCHAR(20) NOT NULL CHECK (role IN ('admin','kasir')),
     is_aktif       BOOLEAN     NOT NULL DEFAULT TRUE,
-    created_at     TIMESTAMP   NOT NULL DEFAULT NOW()
+    created_at     TIMESTAMP   NOT NULL DEFAULT (NOW() AT TIME ZONE 'Asia/Jakarta')
 );
 CREATE TABLE pos (
     id_pos    VARCHAR(10) PRIMARY KEY,
@@ -46,13 +47,22 @@ CREATE TABLE menu (
     nama_menu       VARCHAR(100) NOT NULL UNIQUE,
     harga_satuan    INT          NOT NULL CHECK (harga_satuan >= 0),
     diskon_persen   INT          NOT NULL DEFAULT 0 CHECK (diskon_persen BETWEEN 0 AND 100),
-    hpp             INT          NOT NULL DEFAULT 0 CHECK (hpp >= 0),
     stok            INT          CHECK (stok >= 0),
     adonan          VARCHAR(20)  CHECK (adonan IN ('Kentang','Labu','Ubi')),
     rating_adonan   INT          CHECK (rating_adonan BETWEEN 1 AND 3),
     is_rekomendasi  BOOLEAN NOT NULL DEFAULT FALSE,
+    is_baru_manual  BOOLEAN NOT NULL DEFAULT FALSE,
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE,
+    is_pedas        BOOLEAN NOT NULL DEFAULT FALSE,
+    varian_menu     TEXT[] NOT NULL DEFAULT '{}',
     is_aktif        BOOLEAN NOT NULL DEFAULT TRUE,
+    deskripsi       TEXT,
+    created_at      TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'Asia/Jakarta'),
     CHECK ((adonan IS NULL) = (rating_adonan IS NULL))
+);
+CREATE TABLE bakehaus_schema_migrations (
+    migration_key TEXT PRIMARY KEY,
+    applied_at    TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'Asia/Jakarta')
 );
 CREATE TABLE transaksi (
     no_struk       VARCHAR(20) PRIMARY KEY,
@@ -72,7 +82,11 @@ CREATE TABLE transaksi (
                    CHECK (status_pesanan IN
                      ('Pending','Confirmed','Preparing','On Delivery','Completed','Cancelled'))
 );
-CREATE UNIQUE INDEX ux_antrian_harian ON transaksi (id_toko, (tanggal_waktu::date), no_antrian);
+CREATE UNIQUE INDEX ux_antrian_harian ON transaksi (
+    id_toko,
+    (tanggal_waktu::date),
+    no_antrian
+);
 CREATE TABLE detail_transaksi (
     id_detail      SERIAL PRIMARY KEY,
     no_struk       VARCHAR(20) NOT NULL REFERENCES transaksi(no_struk) ON DELETE CASCADE,
@@ -88,7 +102,7 @@ CREATE TABLE pelanggan (
     id_pelanggan  SERIAL PRIMARY KEY,
     nama_pelanggan VARCHAR(100) NOT NULL,
     no_telepon    VARCHAR(20) NOT NULL,
-    dibuat_pada   TIMESTAMP NOT NULL DEFAULT NOW()
+    dibuat_pada   TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'Asia/Jakarta')
 );
 CREATE INDEX idx_pelanggan_telepon ON pelanggan(no_telepon);
 CREATE TABLE detail_delivery (
@@ -102,10 +116,26 @@ CREATE TABLE detail_delivery (
     status_delivery VARCHAR(20) NOT NULL DEFAULT 'Pending'
                     CHECK (status_delivery IN
                       ('Pending','Confirmed','Preparing','On Delivery','Completed','Cancelled')),
-    dibuat_pada    TIMESTAMP NOT NULL DEFAULT NOW(),
-    diperbarui_pada TIMESTAMP NOT NULL DEFAULT NOW()
+    dibuat_pada    TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'Asia/Jakarta'),
+    diperbarui_pada TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'Asia/Jakarta')
 );
+ALTER TABLE detail_delivery ADD COLUMN IF NOT EXISTS area_code VARCHAR(30);
 CREATE INDEX idx_detail_delivery_status ON detail_delivery(status_delivery);
+CREATE TABLE custom_labels (
+    id_label   SERIAL PRIMARY KEY,
+    nama_label VARCHAR(50) NOT NULL UNIQUE,
+    warna      VARCHAR(7) NOT NULL DEFAULT '#64748b' CHECK (warna ~ '^#[0-9A-Fa-f]{6}$')
+);
+CREATE TABLE menu_label (
+    id_menu  VARCHAR(10) NOT NULL REFERENCES menu(id_menu) ON DELETE CASCADE,
+    id_label INT NOT NULL REFERENCES custom_labels(id_label) ON DELETE CASCADE,
+    PRIMARY KEY (id_menu, id_label)
+);
+CREATE TABLE addon_target_category (
+    id_menu     VARCHAR(10) NOT NULL REFERENCES menu(id_menu) ON DELETE CASCADE,
+    id_kategori VARCHAR(10) NOT NULL REFERENCES kategori_menu(id_kategori) ON DELETE CASCADE,
+    PRIMARY KEY (id_menu, id_kategori)
+);
 CREATE INDEX idx_transaksi_asal_status ON transaksi(asal_pesanan, status_pesanan);
 CREATE TABLE order_tersimpan (
     id_order_tersimpan  SERIAL PRIMARY KEY,
@@ -114,7 +144,7 @@ CREATE TABLE order_tersimpan (
                         CHECK (tipe_pesanan IN ('Dine In','Take Away','Delivery')),
     id_toko             VARCHAR(10) NOT NULL REFERENCES toko(id_toko),
     id_karyawan         VARCHAR(10) NOT NULL REFERENCES karyawan(id_karyawan),
-    dibuat_pada         TIMESTAMP   NOT NULL DEFAULT NOW()
+    dibuat_pada         TIMESTAMP   NOT NULL DEFAULT (NOW() AT TIME ZONE 'Asia/Jakarta')
 );
 CREATE TABLE order_tersimpan_item (
     id_item             SERIAL PRIMARY KEY,
@@ -130,32 +160,6 @@ CREATE INDEX idx_menu_adonan     ON menu(adonan) WHERE adonan IS NOT NULL;
 CREATE INDEX idx_detail_no_struk ON detail_transaksi(no_struk);
 CREATE INDEX idx_detail_menu     ON detail_transaksi(id_menu);
 CREATE INDEX idx_transaksi_waktu ON transaksi(tanggal_waktu);
-CREATE FUNCTION fn_kurangi_stok() RETURNS trigger AS $$
-DECLARE
-    stok_tersedia INT;
-BEGIN
-    SELECT stok INTO stok_tersedia
-    FROM menu
-    WHERE id_menu = NEW.id_menu
-    FOR UPDATE;
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Menu % tidak ditemukan', NEW.id_menu;
-    END IF;
-    IF stok_tersedia IS NOT NULL THEN
-        IF stok_tersedia < NEW.qty THEN
-            RAISE EXCEPTION 'Stok menu % tidak mencukupi. Tersedia: %, diminta: %',
-                NEW.id_menu, stok_tersedia, NEW.qty;
-        END IF;
-        UPDATE menu
-        SET stok = stok - NEW.qty
-        WHERE id_menu = NEW.id_menu;
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-CREATE TRIGGER trg_kurangi_stok
-BEFORE INSERT ON detail_transaksi
-FOR EACH ROW EXECUTE FUNCTION fn_kurangi_stok();
 INSERT INTO toko VALUES ('T01', 'Bake Haus', 'Mansion Valley D6');
 INSERT INTO karyawan (id_karyawan, nama_karyawan, jabatan) VALUES
 ('E01', 'Owner',         'Owner'),
@@ -237,7 +241,7 @@ FROM (
               ('Coffee','Salt Caramel Coffee',15000,false),
               ('Coffee','Americano',15000,true),
               ('Coffee','Long Black',15000,false),
-              ('Coffee','Add On Shot',5000,false),
+              ('Add On','Add On Shot',5000,false),
               ('Non-Coffee','Tea',5000,false),
               ('Non-Coffee','Lychee Tea',8000,true),
               ('Non-Coffee','Peach Tea',8000,false),
@@ -305,6 +309,128 @@ FROM (
         JOIN kategori_menu k ON k.nama_kategori = p.kat
     ) t
 ) s;
+UPDATE menu
+SET created_at = (NOW() AT TIME ZONE 'Asia/Jakarta') - INTERVAL '31 days';
+UPDATE menu
+SET varian_menu = ARRAY['Putih', 'Merah', 'Coklat']::TEXT[]
+WHERE regexp_replace(lower(nama_menu), '[^a-z0-9]', '', 'g') = 'nasigoreng';
+UPDATE menu
+SET varian_menu = array_cat((
+    SELECT array_agg(variants.adonan::TEXT ORDER BY
+        CASE variants.adonan
+            WHEN 'Kentang' THEN 1
+            WHEN 'Labu' THEN 2
+            WHEN 'Ubi' THEN 3
+            ELSE 4
+        END
+    )
+    FROM (
+        SELECT DISTINCT sibling.adonan
+        FROM menu AS sibling
+        WHERE sibling.id_kategori = menu.id_kategori
+          AND sibling.adonan IS NOT NULL
+          AND lower(regexp_replace(sibling.nama_menu, '\s*-\s*(Kentang|Labu|Ubi)$', '', 'i')) =
+              lower(regexp_replace(menu.nama_menu, '\s*-\s*(Kentang|Labu|Ubi)$', '', 'i'))
+    ) AS variants
+), ARRAY['Bomboloni']::TEXT[])
+WHERE adonan IS NOT NULL AND cardinality(varian_menu) = 0;
+INSERT INTO bakehaus_schema_migrations (migration_key)
+VALUES ('legacy-menu-variants-v1'), ('backdate-seeded-menu-v1');
+COMMENT ON COLUMN menu.deskripsi IS 'Deskripsi menu, tampil di website delivery';
+UPDATE menu m
+SET deskripsi = v.d
+FROM (VALUES
+  ('nasigoreng', 'Nasi goreng dengan pilihan bumbu putih, merah, atau coklat. Porsi pas buat makan siang.'),
+  ('bakmie', 'Bakmie gurih dengan topping khas Bakehaus.'),
+  ('nasiayamcabegaram', 'Ayam renyah ditumis cabe garam, gurih dan pedas, disajikan dengan nasi.'),
+  ('nasiayamsaltedegg', 'Ayam goreng dibalut saus salted egg yang creamy dan gurih, disajikan dengan nasi.'),
+  ('nasiayammentai', 'Ayam dengan saus mentai creamy, disajikan dengan nasi.'),
+  ('nasiayamgochujang', 'Ayam berbumbu gochujang ala Korea, manis pedas, disajikan dengan nasi.'),
+  ('nasiayamhotlava', 'Ayam dengan saus hot lava yang pedas menyengat, disajikan dengan nasi.'),
+  ('nasiayamkeju', 'Ayam dengan saus keju yang lumer, disajikan dengan nasi.'),
+  ('nasiayampokpok', 'Ayam pok-pok renyah ala street food, disajikan dengan nasi.'),
+  ('sawitelor', 'Tumis sawi dan telur yang ringan dan gurih, disajikan dengan nasi.'),
+  ('nasicapcay', 'Tumis aneka sayur dengan kuah kental gurih, disajikan dengan nasi.'),
+  ('fuyunghai', 'Telur dadar ala Chinese food dengan saus kental, disajikan dengan nasi.'),
+  ('nasikatsuori', 'Chicken katsu renyah dengan saus katsu, disajikan dengan nasi.'),
+  ('nasiayamkoloke', 'Ayam goreng tepung dengan saus asam manis ala koloke, disajikan dengan nasi.'),
+  ('nasiayammentega', 'Ayam dengan saus mentega yang gurih manis, disajikan dengan nasi.'),
+  ('nasikatsucurry', 'Chicken katsu renyah dengan saus kari ala Jepang, disajikan dengan nasi.'),
+  ('dishoftheday', 'Menu spesial yang berganti setiap hari.'),
+  ('frenchfries', 'Kentang goreng renyah, cocok buat camilan.'),
+  ('nugget', 'Nugget ayam goreng, hangat dan renyah.'),
+  ('sausage', 'Sosis goreng yang gurih.'),
+  ('snackplatter', 'Campuran camilan goreng untuk ngemil bareng.'),
+  ('dimsummentai', 'Dimsum dengan saus mentai yang creamy.'),
+  ('risol', 'Risol isi gurih, digoreng renyah.'),
+  ('bakehauscoffee', 'Signature coffee Bakehaus, creamy dan seimbang.'),
+  ('yinyangcoffee', 'Perpaduan kopi dan teh dalam satu gelas.'),
+  ('cafelatte', 'Espresso dengan susu, lembut dan ringan.'),
+  ('butterscotchcoffee', 'Kopi susu dengan rasa butterscotch yang manis legit.'),
+  ('hazelnutcoffee', 'Kopi susu dengan aroma hazelnut yang wangi.'),
+  ('brownsugarcoffee', 'Kopi susu dengan manis gula aren/brown sugar.'),
+  ('saltcaramelcoffee', 'Kopi susu dengan karamel manis asin.'),
+  ('americano', 'Espresso dengan air, ringan dan segar.'),
+  ('longblack', 'Espresso pekat dengan air, kuat dan bold.'),
+  ('addonshot', 'Tambahan satu shot espresso.'),
+  ('tea', 'Teh klasik yang menyegarkan.'),
+  ('lycheetea', 'Teh dengan rasa leci yang segar.'),
+  ('peachtea', 'Teh dengan rasa peach yang manis segar.'),
+  ('lemontea', 'Teh dengan perasan lemon, segar dan asam manis.'),
+  ('greentea', 'Minuman teh hijau yang segar.'),
+  ('tarotea', 'Minuman rasa taro yang manis dan lembut.'),
+  ('chocolatetea', 'Perpaduan teh dan coklat.'),
+  ('thaitea', 'Thai tea manis dan creamy.'),
+  ('bakehaustea', 'Signature tea ala Bakehaus.'),
+  ('milkchocolate', 'Coklat susu yang manis dan lembut.'),
+  ('pistachiomatcha', 'Matcha dengan sentuhan rasa pistachio.'),
+  ('matchalatte', 'Matcha dengan susu, creamy dan segar.'),
+  ('passionfruittea', 'Teh dengan rasa markisa yang segar asam manis.'),
+  ('bakehauschocolate', 'Signature coklat Bakehaus yang pekat dan manis.'),
+  ('aquviva', 'Air mineral Aquviva.'),
+  ('wintermelon', 'Minuman wintermelon yang manis dan menyegarkan.'),
+  ('donutkeju', 'Donut empuk rasa Keju. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutmeses', 'Donut empuk rasa Meses. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutkacang', 'Donut empuk rasa Kacang. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutredvelvet', 'Donut empuk rasa Red Velvet. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutgreentea', 'Donut empuk rasa Greentea. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutstrawberry', 'Donut empuk rasa Strawberry. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donuttiramisu', 'Donut empuk rasa Tiramisu. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutsusu', 'Donut empuk rasa Susu. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutbananamilk', 'Donut empuk rasa Banana Milk. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutcaramel', 'Donut empuk rasa Caramel. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutoreo', 'Donut empuk rasa Oreo. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutcreamcheese', 'Donut empuk rasa Creamcheese. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutchocowhite', 'Donut empuk rasa Chocowhite. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutcappuccino', 'Donut empuk rasa Cappuccino. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutmango', 'Donut empuk rasa Mango. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutpizza', 'Donut gurih dengan topping ala pizza. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('donutsmokedbeef', 'Donut gurih dengan smoked beef. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'),
+  ('saltbreadori', 'Salt bread lembut dengan rasa gurih asin yang pas.'),
+  ('saltstrawberrycream', 'Salt bread dengan krim stroberi yang manis.'),
+  ('sourdough', 'Roti sourdough pilihan isi cranberry cheese atau chocolate.'),
+  ('rotipisang', 'Roti isi pisang, pilih ori, coklat, atau coklat keju.'),
+  ('nasiputih', 'Tambahan seporsi nasi putih.'),
+  ('ayampokpok', 'Tambahan ayam pok-pok renyah.'),
+  ('katsuperstrip', 'Tambahan irisan chicken katsu, harga per strip.')
+) AS v(n, d)
+WHERE m.deskripsi IS NULL
+  AND regexp_replace(
+        regexp_replace(
+          lower(regexp_replace(m.nama_menu, '\s*-\s*(Kentang|Labu|Ubi)$', '', 'i')),
+          '[^a-z0-9]', '', 'g'
+        ), '^addon', ''
+      ) = v.n;
+INSERT INTO addon_target_category (id_menu, id_kategori)
+SELECT m.id_menu, k.id_kategori
+FROM menu m
+JOIN kategori_menu k ON k.nama_kategori = CASE
+    WHEN regexp_replace(lower(m.nama_menu), '[^a-z0-9]', '', 'g') = 'addonshot' THEN 'Coffee'
+    ELSE 'Food'
+END
+WHERE regexp_replace(lower(m.nama_menu), '[^a-z0-9]', '', 'g') IN
+      ('addonnasiputih', 'addonayampokpok', 'addonkatsuperstrip', 'addonshot')
+ON CONFLICT DO NOTHING;
 INSERT INTO transaksi
   (no_struk, tanggal_waktu, no_antrian, tipe_pesanan, nominal_bayar, persen_pajak,
    id_toko, id_karyawan, id_pos, id_metode)
@@ -362,7 +488,7 @@ JOIN v_transaksi_total vt ON vt.no_struk = t.no_struk
 WHERE t.tipe_pesanan = 'Delivery';
 CREATE OR REPLACE VIEW v_menu_master AS
 SELECT m.id_menu, m.sku, m.nama_menu, k.nama_kategori AS category,
-       m.harga_satuan AS harga, m.hpp,
+       m.harga_satuan AS harga,
        COALESCE(t.terjual, 0) AS terjual,
        m.stok,
        CASE WHEN m.stok IS NULL THEN 'Ready ∞'
@@ -370,14 +496,16 @@ SELECT m.id_menu, m.sku, m.nama_menu, k.nama_kategori AS category,
             ELSE 'Habis' END   AS status_stok,
        m.adonan,
        m.is_rekomendasi,
-       m.is_aktif AS aktif
+       m.is_aktif AS aktif,
+       m.deskripsi
 FROM menu m
 JOIN kategori_menu k ON k.id_kategori = m.id_kategori
 LEFT JOIN (
     SELECT id_menu, SUM(qty)::INT AS terjual
     FROM detail_transaksi
     GROUP BY id_menu
-) t ON t.id_menu = m.id_menu;
+) t ON t.id_menu = m.id_menu
+WHERE m.is_deleted = FALSE;
 CREATE VIEW v_users_staff AS
 SELECT u.id_user, k.nama_karyawan AS nama, u.username, u.role, u.is_aktif
 FROM users u
@@ -411,7 +539,7 @@ GROUP BY mp.nama_metode;
 SELECT k.kelompok, k.nama_kategori, m.sku, m.nama_menu, m.harga_satuan,
        CASE WHEN m.is_rekomendasi THEN '★' ELSE '' END AS rekomendasi
 FROM menu m JOIN kategori_menu k ON k.id_kategori = m.id_kategori
-WHERE m.is_aktif
+WHERE m.is_aktif AND m.is_deleted = FALSE
 ORDER BY k.urutan, m.sku;
 SELECT sku, nama_menu, adonan, rating_adonan AS bintang, harga_satuan, stok
 FROM menu WHERE adonan IS NOT NULL
@@ -441,4 +569,3 @@ ORDER BY total_omzet DESC;
 SELECT *
 FROM v_delivery_orders
 ORDER BY tanggal_waktu DESC;
-ALTER TABLE detail_delivery ADD COLUMN IF NOT EXISTS area_code VARCHAR(30);

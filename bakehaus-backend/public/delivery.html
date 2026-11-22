@@ -31,12 +31,17 @@
   .bh-card{min-height:268px}
   @media (min-width:640px){.bh-card{min-height:256px}}
   .bh-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-  .bh-tag{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;padding:2px 8px;border-radius:999px;line-height:1.5;white-space:nowrap}
+  .bh-tag{display:inline-flex;align-items:center;min-height:18px;font-size:9px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;padding:2px 7px;border-radius:999px;line-height:1.3;white-space:nowrap}
   .bh-tag.best{background:#fef3c7;color:#92400e}
   .bh-tag.new{background:#dcfce7;color:#166534}
   .bh-tag.spicy{background:#fee2e2;color:#b91c1c}
   .bh-tag.discount{background:#fee2e2;color:#b91c1c}
-  .bh-price s{margin-right:6px;color:#a8a29e;font-size:12px;font-weight:500}
+  .bh-tag.stock{background:#e0f2fe;color:#075985;text-transform:none}
+  .bh-phone-error{display:none;color:#b91c1c;font-size:12px;margin-top:5px}
+  .bh-phone-error.show{display:block}
+  .bh-invalid{border-color:#dc2626!important;background:#fff7f7!important}
+  .bh-price{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+  .bh-price s{margin-right:0;color:#a8a29e;font-size:12px;font-weight:500}
   .bh-price strong{color:#dc2626}
   .bh-desc{font-size:12px;line-height:1.4;color:#78716c;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .bh-card.soldout{background:#f5f5f4;border-color:#e7e5e4;filter:grayscale(1);opacity:.65;cursor:not-allowed}
@@ -90,6 +95,7 @@
   .bh-note:focus{background:#fff;border-color:#dc2626}
   .bh-qty{display:flex;align-items:center;gap:8px;background:#f5f5f4;border-radius:12px;padding:4px}
   .bh-qty span{min-width:24px;text-align:center;font-weight:800}
+  .bh-qty input{width:42px;text-align:center;font-weight:800;border:0;background:transparent;outline:0}
   .bh-qty button{background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.08)}
   .bh-qty button.plus{background:#dc2626}
   .bh-addbtn{flex:1;white-space:nowrap;height:48px;border-radius:12px;background:#dc2626;color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;transition:opacity .15s}
@@ -249,7 +255,7 @@
     <div class="px-5 py-4 border-t border-stone-100 bg-white flex items-center gap-3">
       <div class="bh-qty">
         <button id="qDec" type="button" aria-label="Kurangi jumlah">−</button>
-        <span id="qVal">1</span>
+        <input id="qVal" type="number" min="1" max="99" value="1" inputmode="numeric" aria-label="Jumlah">
         <button id="qInc" type="button" class="plus" aria-label="Tambah jumlah">+</button>
       </div>
       <button id="itemAdd" type="button" class="bh-addbtn"><span>Tambah</span><span id="itemAddTotal"></span></button>
@@ -316,7 +322,7 @@ const PROMO = {
 };
 
 // ================= DATA MENU =================
-// tags: 'best' (Paling Laris), 'new' (Baru), 'spicy' (Pedas) | habis: true = stok habis
+// tags: 'best' (Paling Laris), 'spicy' (Pedas) | habis: true = stok habis
 const TAGS = {
   best:  { label: 'Paling Laris' },
   new:   { label: 'Baru' },
@@ -329,7 +335,7 @@ function tambah(cat, name, price, o) {
 }
 
 // food
-tambah('food', 'Nasi Goreng', 15000, { opts: ['Putih', 'Kecap', 'Merah'], tags: ['best'], desc: 'Nasi goreng dengan pilihan bumbu putih, kecap, atau merah. Porsi pas buat makan siang.' });
+tambah('food', 'Nasi Goreng', 15000, { opts: ['Putih', 'Merah', 'Coklat'], tags: ['best'], desc: 'Nasi goreng dengan pilihan bumbu putih, merah, atau coklat. Porsi pas buat makan siang.' });
 tambah('food', 'Bakmie', 15000, { desc: 'Bakmie gurih dengan topping khas Bakehaus.' });
 tambah('food', 'Nasi Ayam Cabe Garam', 15000, { tags: ['spicy'], desc: 'Ayam renyah ditumis cabe garam, gurih dan pedas, disajikan dengan nasi.' });
 tambah('food', 'Nasi Ayam Salted Egg', 15000, { tags: ['best'], desc: 'Ayam goreng dibalut saus salted egg yang creamy dan gurih, disajikan dengan nasi.' });
@@ -352,7 +358,7 @@ tambah('snack', 'French Fries', 15000, { desc: 'Kentang goreng renyah, cocok bua
 tambah('snack', 'Nugget', 15000, { desc: 'Nugget ayam goreng, hangat dan renyah.' });
 tambah('snack', 'Sausage', 15000, { desc: 'Sosis goreng yang gurih.' });
 tambah('snack', 'Snack Platter', 15000, { desc: 'Campuran camilan goreng untuk ngemil bareng.' });
-tambah('snack', 'Dimsum Mentai', 15000, { tags: ['new'], desc: 'Dimsum dengan saus mentai yang creamy.' });
+tambah('snack', 'Dimsum Mentai', 15000, { desc: 'Dimsum dengan saus mentai yang creamy.' });
 tambah('snack', 'Risol', 10000, { desc: 'Risol isi gurih, digoreng renyah.' });
 
 // coffee
@@ -378,28 +384,28 @@ tambah('noncoffee', 'Chocolate Tea', 8000, { desc: 'Perpaduan teh dan coklat.' }
 tambah('noncoffee', 'Thai Tea', 15000, { tags: ['best'], desc: 'Thai tea manis dan creamy.' });
 tambah('noncoffee', 'Bakehaus Tea', 15000, { desc: 'Signature tea ala Bakehaus.' });
 tambah('noncoffee', 'Milk Chocolate', 15000, { desc: 'Coklat susu yang manis dan lembut.' });
-tambah('noncoffee', 'Pistachio Matcha', 15000, { tags: ['new'], desc: 'Matcha dengan sentuhan rasa pistachio.' });
+tambah('noncoffee', 'Pistachio Matcha', 15000, { desc: 'Matcha dengan sentuhan rasa pistachio.' });
 tambah('noncoffee', 'Matcha Latte', 15000, { desc: 'Matcha dengan susu, creamy dan segar.' });
 tambah('noncoffee', 'Passion Fruit Tea', 10000, { desc: 'Teh dengan rasa markisa yang segar asam manis.' });
 tambah('noncoffee', 'Bakehaus Chocolate', 20000, { desc: 'Signature coklat Bakehaus yang pekat dan manis.' });
 tambah('noncoffee', 'Aquviva', 5000, { desc: 'Air mineral Aquviva.' });
 tambah('noncoffee', 'Wintermelon', 10000, { desc: 'Minuman wintermelon yang manis dan menyegarkan.' });
 
-// donut (semua rasa bisa pilih adonan kentang / labu / ubi)
-const adonan = ['Kentang', 'Labu', 'Ubi'];
+// varian donut mengikuti pilihan yang tersimpan di database
+const adonan = ['Kentang', 'Labu', 'Ubi', 'Bomboloni'];
 ['Keju', 'Meses', 'Kacang', 'Red Velvet', 'Greentea', 'Strawberry', 'Tiramisu',
  'Susu', 'Banana Milk', 'Caramel', 'Oreo', 'Creamcheese', 'Chocowhite',
  'Cappuccino', 'Mango'].forEach(r => tambah('donut', 'Donut ' + r, 10000, {
   opts: adonan,
-  tags: r === 'Keju' ? ['best'] : r === 'Mango' ? ['new'] : [],
-  desc: 'Donut empuk rasa ' + r + '. Pilih adonan kentang, labu, atau ubi.'
+  tags: r === 'Keju' ? ['best'] : [],
+  desc: 'Donut empuk rasa ' + r + '. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.'
 }));
-tambah('donut', 'Donut Pizza', 13000, { opts: adonan, desc: 'Donut gurih dengan topping ala pizza. Pilih adonan kentang, labu, atau ubi.' });
-tambah('donut', 'Donut Smoked Beef', 13000, { opts: adonan, desc: 'Donut gurih dengan smoked beef. Pilih adonan kentang, labu, atau ubi.' });
+tambah('donut', 'Donut Pizza', 13000, { opts: adonan, desc: 'Donut gurih dengan topping ala pizza. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.' });
+tambah('donut', 'Donut Smoked Beef', 13000, { opts: adonan, desc: 'Donut gurih dengan smoked beef. Pilih varian Kentang, Labu, Ubi, atau Bomboloni.' });
 
 // bread
 tambah('bread', 'Salt Bread Ori', 8000, { tags: ['best'], desc: 'Salt bread lembut dengan rasa gurih asin yang pas.' });
-tambah('bread', 'Salt Strawberry Cream', 13000, { tags: ['new'], desc: 'Salt bread dengan krim stroberi yang manis.' });
+tambah('bread', 'Salt Strawberry Cream', 13000, { desc: 'Salt bread dengan krim stroberi yang manis.' });
 tambah('bread', 'Sourdough', 28000, { opts: ['Cranberry Cheese', 'Chocolate'], desc: 'Roti sourdough pilihan isi cranberry cheese atau chocolate.' });
 tambah('bread', 'Roti Pisang', 10000, { opts: ['Ori', 'Coklat', 'Coklat Keju'], desc: 'Roti isi pisang, pilih ori, coklat, atau coklat keju.' });
 
@@ -414,6 +420,9 @@ tambah('addon', 'Katsu (per strip)', 7500, { desc: 'Tambahan irisan chicken kats
 // yang belum disediakan oleh API (deskripsi, varian, dan label).
 let menu = [];
 let menuById = new Map();
+let menuRefreshInProgress = false;
+let menuFetchSucceeded = false;
+let menuSnapshot = null;
 const API_BASE = '/api';
 
 function normalizeText(value) {
@@ -451,21 +460,27 @@ function discountedMenuPrice(price, discount) {
 }
 
 async function loadMenuFromAPI() {
-  $('grid').innerHTML = '<p class="col-span-full py-12 text-center text-sm text-stone-500">Memuat menu Bakehaus...</p>';
+  if (menuRefreshInProgress) return;
+  menuRefreshInProgress = true;
+  if (!menu.length && !menuFetchSucceeded) {
+    $('grid').innerHTML = '<p class="col-span-full py-12 text-center text-sm text-stone-500">Memuat menu Bakehaus...</p>';
+  }
   try {
     let rows = null;
+    let apiMenuLoaded = false;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/menu?include_inactive=true`);
+      const response = await fetch(`${API_BASE_URL}/api/menu?include_inactive=true`, { cache: 'no-store' });
       if (response.ok) {
         const result = await response.json();
         rows = Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : null);
+        apiMenuLoaded = Array.isArray(rows);
       }
     } catch (fetchErr) {
       console.warn('Fetch /api/menu gagal, mencoba shared state fallback:', fetchErr);
     }
 
     // Shared state fallback jika backend API belum aktif (dari POS bh_menu2)
-    if (!rows || !rows.length) {
+    if (!apiMenuLoaded) {
       try {
         const savedPosMenu = JSON.parse(localStorage.getItem('bh_menu2'));
         if (Array.isArray(savedPosMenu) && savedPosMenu.length > 0) {
@@ -478,9 +493,10 @@ async function loadMenuFromAPI() {
             harga: item.basePrice == null ? item.price : item.basePrice,
             harga_diskon: item.price,
             diskon_persen: item.diskon_persen || 0,
-            hpp: item.cost,
             stok: item.stock < 0 ? null : item.stock,
             status_stok: item.stock === 0 ? 'Habis' : (item.stock > 0 ? item.stock + ' pcs' : 'Ready ∞'),
+            varian_menu: Array.isArray(item.variants) ? item.variants : undefined,
+            is_baru: !!(item.is_baru || item.is_baru_manual),
             deskripsi: item.desc || '',
             aktif: item.on !== false
           }));
@@ -488,7 +504,7 @@ async function loadMenuFromAPI() {
       } catch (_) {}
     }
 
-    if (!rows || !rows.length) {
+    if (!rows) {
       throw new Error('Data menu tidak ditemukan dari API maupun penyimpanan lokal.');
     }
 
@@ -496,7 +512,10 @@ async function loadMenuFromAPI() {
       .map(row => {
         const dbName = String(row.nama_menu || '').trim();
         const baseName = dbName.replace(/\s*-\s*(Kentang|Labu|Ubi)$/i, '').trim();
-        const cat = categoryKey(row.category_slug || row.category);
+        const categoryName = String(row.category || row.category_slug || '').trim();
+        const cat = categoryName
+          ? categoryKey(categoryName)
+          : (/^add[\s_-]*on\b/i.test(dbName) ? 'addon' : 'uncategorized');
         const meta = menuMetadata.find(item =>
           normalizeText(item.name) === normalizeText(baseName)
         );
@@ -509,26 +528,31 @@ async function loadMenuFromAPI() {
         const stockStatus = normalizeText(row.status_stok);
         const adonan = row.adonan || (dbName.match(/-\s*(Kentang|Labu|Ubi)$/i) || [])[1] || null;
         const id = String(row.id_menu);
-        const opts = meta ? meta.opts : null;
+        const apiVariants = Array.isArray(row.varian_menu)
+          ? row.varian_menu.map(value => String(value).trim()).filter(Boolean)
+          : [];
+        const opts = Array.isArray(row.varian_menu)
+          ? (apiVariants.length ? apiVariants : null)
+          : (meta ? meta.opts : null);
 
         // Otomatis daftarkan kategori jika belum ada di categories filter
         if (cat && !categories.some(c => c.key === cat)) {
           categories.push({
             key: cat,
-            label: row.category || (cat.charAt(0).toUpperCase() + cat.slice(1))
+            label: categoryName || (cat.charAt(0).toUpperCase() + cat.slice(1))
           });
-          catLabel[cat] = row.category || (cat.charAt(0).toUpperCase() + cat.slice(1));
+          catLabel[cat] = categoryName || (cat.charAt(0).toUpperCase() + cat.slice(1));
         }
 
         const itemTags = [];
         if (row.is_paling_laris || row.is_rekomendasi) {
           itemTags.push('best');
         }
-        if (row.is_baru) {
-          itemTags.push('new');
-        }
-        if (meta && Array.isArray(meta.tags) && meta.tags.includes('spicy')) {
+        if (row.is_pedas || (meta && Array.isArray(meta.tags) && meta.tags.includes('spicy'))) {
           itemTags.push('spicy');
+        }
+        if (row.is_baru || row.is_baru_manual) {
+          itemTags.push('new');
         }
 
         const itemDesc = (row.deskripsi && String(row.deskripsi).trim()) || (meta && meta.desc ? meta.desc : '');
@@ -539,7 +563,7 @@ async function loadMenuFromAPI() {
           name: baseName,
           dbName,
           cat,
-          catName: row.category || '',
+          catName: cat === 'addon' ? 'Add On' : categoryName,
           basePrice,
           price: Number.isFinite(salePrice) ? salePrice : discountedMenuPrice(basePrice, discountPercent),
           discountPercent,
@@ -552,10 +576,12 @@ async function loadMenuFromAPI() {
           opts,
           variantIds: opts ? Object.fromEntries(opts.map(opt => [opt, id])) : null,
           tags: itemTags,
+          labels: Array.isArray(row.labels) ? row.labels : [],
+          addonTargets: (Array.isArray(row.addon_target_categories) ? row.addon_target_categories : []).map(categoryKey),
           habis: row.aktif === false || stock === 0 || stockStatus.includes('habis')
         };
       })
-      .filter(item => item.id && item.name && item.cat);
+      .filter(item => item.id && item.name);
       
     // Isi menuById dulu sebelum memvalidasi/mengupdate cart
     menuById = new Map(mappedRows.map(item => [String(item.id), item]));
@@ -573,24 +599,43 @@ async function loadMenuFromAPI() {
     });
 
     const groupedDonuts = Array.from(donutGroups.entries()).map(([name, variants]) => {
-      const order = ['Kentang', 'Labu', 'Ubi'];
-      variants.sort((a, b) => order.indexOf(a.adonan) - order.indexOf(b.adonan));
-      const first = variants[0];
-      const maxDiscount = Math.max(...variants.map(item => item.discountPercent));
-      const uniformPrice = variants.every(item =>
+      const order = ['Kentang', 'Labu', 'Ubi', 'Bomboloni'];
+      variants.sort((a, b) => {
+        const ai = order.indexOf(a.adonan), bi = order.indexOf(b.adonan);
+        return (ai < 0 ? order.length : ai) - (bi < 0 ? order.length : bi);
+      });
+      const opts = Array.from(new Set(variants.flatMap(item =>
+        item.opts && item.opts.length ? item.opts : [item.adonan]
+      )));
+      opts.sort((a, b) => {
+        const ai = order.indexOf(a), bi = order.indexOf(b);
+        return (ai < 0 ? order.length : ai) - (bi < 0 ? order.length : bi);
+      });
+      const variantIds = Object.fromEntries(opts.map(option => {
+        const item = variants.find(candidate => candidate.adonan === option) ||
+          variants.find(candidate => candidate.opts && candidate.opts.includes(option));
+        return [option, item.id];
+      }));
+      const optionItems = opts.map(option => variants.find(item => String(item.id) === String(variantIds[option])));
+      const first = optionItems[0] || variants[0];
+      const maxDiscount = Math.max(...optionItems.map(item => item.discountPercent));
+      const uniformPrice = optionItems.every(item =>
         item.basePrice === first.basePrice && item.price === first.price && item.discountPercent === first.discountPercent
       );
-      const variantIds = Object.fromEntries(variants.map(item => [item.adonan, item.id]));
       const metadata = menuMetadata.find(item => normalizeText(item.name) === normalizeText(name));
       const mergedTags = Array.from(new Set(variants.flatMap(v => v.tags || [])));
+      const mergedLabels = Array.from(new Map(
+        variants.flatMap(variant => variant.labels || [])
+          .map(label => [String(label.id_label ?? label.nama_label), label])
+      ).values());
       const donutDesc = (variants.find(v => v.desc && v.desc.trim()) || {}).desc || (metadata && metadata.desc ? metadata.desc : '') || first.desc || '';
 
       return {
         ...first,
         id: first.id,
         name,
-        aktif: variants.some(item => item.aktif),
-        opts: variants.map(item => item.adonan),
+        aktif: optionItems.some(item => item.aktif),
+        opts,
         variantIds,
         variants,
         discountPercent: maxDiscount,
@@ -598,17 +643,18 @@ async function loadMenuFromAPI() {
         showDiscount: uniformPrice && first.discountPercent > 0,
         desc: donutDesc,
         tags: mergedTags,
-        habis: variants.every(item => item.habis)
+        labels: mergedLabels,
+        habis: optionItems.every(item => item.habis)
       };
     });
 
     menu = [...regularItems, ...groupedDonuts].sort((a, b) =>
       String(a.sku).localeCompare(String(b.sku), 'id')
     );
-
-    if (!menu.length) {
-      throw new Error('API berhasil diakses, tetapi data menu kosong atau format respons tidak sesuai.');
-    }
+    const snapshot = JSON.stringify(menu);
+    const menuChanged = snapshot !== menuSnapshot;
+    menuSnapshot = snapshot;
+    menuFetchSucceeded = true;
 
     // Bersihkan item di localStorage yang sudah dihapus atau stoknya habis
     Object.keys(cart).forEach(key => {
@@ -621,10 +667,16 @@ async function loadMenuFromAPI() {
 
     renderChips();
     renderFilters();
-    renderGrid();
-    updateCart();
+    if (menuChanged) {
+      renderGrid();
+      updateCart();
+    }
   } catch (error) {
     console.error('Gagal memuat menu dari API:', error);
+    if (menuFetchSucceeded) {
+      console.warn('Katalog terakhir tetap ditampilkan karena pembaruan menu gagal.');
+      return;
+    }
     $('grid').innerHTML = `
       <div class="col-span-full rounded-2xl border border-red-200 bg-red-50 p-5 text-center">
         <p class="font-bold text-red-700">Menu belum dapat dimuat</p>
@@ -634,6 +686,8 @@ async function loadMenuFromAPI() {
     $('retryMenu').addEventListener('click', loadMenuFromAPI);
     $('count').textContent = '';
     $('pager').classList.add('hidden');
+  } finally {
+    menuRefreshInProgress = false;
   }
 }
 
@@ -651,11 +705,6 @@ const categories = [
 const catLabel = Object.fromEntries(categories.map(c => [c.key, c.label]));
 
 // add on yang muncul di popup, per kategori
-const ADDON_RULES = {
-  food:   ['Nasi Putih', 'Ayam Pok-Pok', 'Katsu (per strip)'],
-  coffee: ['Add on Shot']
-};
-
 const AREA = {
   araya: { label: 'Araya – Senandung', sub: 'Gratis ongkir', info: 'Diantar sendiri oleh pihak Bakehaus, gratis ongkir.' },
   ombe:  { label: 'Ombe ke depan', sub: 'Min. order Rp50.000', info: 'Diantar sendiri dengan minimal order Rp50.000. Ongkir Rp5.000 – Rp10.000.' }
@@ -680,14 +729,9 @@ const getDisplayMenu = (id) => menu.find(m =>
   (m.variantIds && Object.values(m.variantIds).some(variantId => String(variantId) === String(id)))
 );
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-const addonsFor = (m) => (ADDON_RULES[m.cat] || [])
-  .filter(n => normalizeText(n) !== normalizeText(m.name))
-  .map(n => {
-    const target = normalizeText(n).replace(/^addon/, '');
-    return Array.from(menuById.values()).find(x =>
-      normalizeText(x.name).replace(/^addon/, '') === target
-    );
-  }).filter(item => item && !item.habis);
+const addonsFor = (m) => Array.from(menuById.values())
+  .filter(item => item.cat === 'addon' && !item.habis &&
+    (item.addonTargets.includes('all') || item.addonTargets.includes(m.cat)));
 const lineKey = (d) => [d.id, d.opt, Object.keys(d.addons).sort().map(a => a + ':' + d.addons[a]).join(','), d.note.trim().toLowerCase()].join('|');
 const lineUnit = (it) => {
   let u = getMenu(it.id).price;
@@ -711,10 +755,7 @@ function simpanCart() {
 
 // item per halaman = kelipatan jumlah kolom
 function perPage() {
-  const w = window.innerWidth;
-  if (w >= 1024) return 12;  // 4 kolom
-  if (w >= 640) return 9;    // 3 kolom
-  return 8;                  // 2 kolom
+  return 12; // kelipatan jumlah kolom untuk semua ukuran layar
 }
 
 // ================= RENDER =================
@@ -736,12 +777,42 @@ function renderFilters() {
 
 function qtyDiCart(id) {
   let n = 0;
-  for (const k in cart) if (cart[k].id == id) n += cart[k].qty;
+  for (const k in cart) {
+    if (cart[k].id == id) n += cart[k].qty;
+    n += (cart[k].addons[id] || 0) * cart[k].qty;
+  }
   return n;
 }
 
+function stockAvailable(id, exceptKey = '') {
+  const product = getMenu(id);
+  if (!product || product.stock === null) return 99;
+  let used = 0;
+  for (const key in cart) {
+    if (key === exceptKey) continue;
+    const item = cart[key];
+    if (String(item.id) === String(id)) used += item.qty;
+    used += (item.addons[id] || 0) * item.qty;
+  }
+  return Math.max(0, product.stock - used);
+}
+
+function draftMaxQty() {
+  if (!draft) return 1;
+  let max = stockAvailable(draft.id, draft.editKey);
+  for (const id in draft.addons) {
+    const perItem = draft.addons[id];
+    if (perItem > 0) max = Math.min(max, Math.floor(stockAvailable(id, draft.editKey) / perItem));
+  }
+  return Math.max(0, Math.min(99, max));
+}
+
 function tagsHtml(m) {
-  return m.tags.length ? `<div class="bh-tags">${m.tags.map(t => `<span class="bh-tag ${t}">${TAGS[t].label}</span>`).join('')}</div>` : '';
+  const standard = m.tags.map(t => `<span class="bh-tag ${t}">${TAGS[t].label}</span>`).join('');
+  const custom = m.labels.map(label => `<span class="bh-tag" style="background:${esc(label.warna)}22;color:${esc(label.warna)}">${esc(label.nama_label)}</span>`).join('');
+  const remaining = m.stock === null ? '' : `<span class="bh-tag stock">Tersisa ${Math.max(0, m.stock - qtyDiCart(m.id))} pcs</span>`;
+  const discount = m.discountPercent > 0 ? `<span class="bh-tag discount">${esc(m.discountLabel)}</span>` : '';
+  return `<div class="bh-tags">${standard}${custom}${discount}${remaining}</div>`;
 }
 
 function pageButtons(total) {
@@ -796,9 +867,6 @@ function renderGrid(anim) {
   $('grid').innerHTML = slice.map(m => {
     const q = qtyDiCart(m.id);
     const unavailableLabel = m.aktif ? 'Stok Habis' : 'Tidak Tersedia';
-    const discountTag = m.discountPercent > 0
-      ? `<span class="bh-tag discount">${esc(m.discountLabel)}</span>`
-      : '';
     const priceMarkup = m.showDiscount
       ? `<s>${rupiah(m.basePrice)}</s><strong>${rupiah(m.price)}</strong>`
       : rupiah(m.price);
@@ -813,7 +881,7 @@ function renderGrid(anim) {
         <p class="text-[11px] font-bold uppercase tracking-wider text-stone-400">${esc(catLabel[m.cat] || m.catName || m.cat)}</p>
         ${q && !m.habis ? `<span class="bg-red-600 text-white text-[11px] font-bold min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center">${q}</span>` : ''}
       </div>
-      <div class="bh-tags">${m.habis ? `<span class="bh-tag bh-unavailable">${unavailableLabel}</span>` : m.tags.map(t => `<span class="bh-tag ${t}">${TAGS[t].label}</span>`).join('')}${discountTag}</div>
+      ${m.habis ? `<div class="bh-tags"><span class="bh-tag bh-unavailable">${unavailableLabel}</span></div>` : tagsHtml(m)}
       <h3 title="${esc(m.name)}" class="font-bold text-[15px] sm:text-[17px] leading-snug mt-1 line-clamp-2">${esc(m.name)}</h3>
       <p class="bh-desc">${esc(m.desc)}</p>
       <div class="mt-auto pt-4">
@@ -875,15 +943,17 @@ function renderCartList() {
         ${ads.length ? `<p class="text-xs text-stone-500 mt-0.5">${ads.map(esc).join(', ')}</p>` : ''}
         ${it.note ? `<p class="text-xs text-stone-500 mt-0.5" style="font-style:italic">“${esc(it.note)}”</p>` : ''}
         <p class="text-xs text-stone-500 mt-0.5">${rupiah(unit)} × ${it.qty} = <span class="font-semibold text-stone-700">${rupiah(unit * it.qty)}</span></p>
+        ${addonsFor(m).length ? `<button type="button" data-edit-addons="${esc(k)}" class="text-xs font-semibold text-red-600 mt-1">Ubah Add-On</button>` : ''}
       </div>
       <div class="flex items-center gap-2 shrink-0">
         <button type="button" data-dec="${esc(k)}" aria-label="Kurangi" class="w-9 h-9 rounded-lg bg-stone-100 hover:bg-stone-200 font-bold">−</button>
-        <span class="w-5 text-center text-sm font-bold">${it.qty}</span>
-        <button type="button" data-inc="${esc(k)}" aria-label="Tambah" class="w-9 h-9 rounded-lg bg-red-600 text-white font-bold">+</button>
+        <input type="number" min="1" max="${cartMaxQty(it, k)}" value="${it.qty}" data-qty="${esc(k)}" aria-label="Jumlah ${esc(m.name)}" class="w-12 text-center text-sm font-bold border rounded-lg h-9">
+        <button type="button" data-inc="${esc(k)}" aria-label="Tambah" class="w-9 h-9 rounded-lg bg-red-600 text-white font-bold" ${it.qty >= cartMaxQty(it, k) ? 'disabled' : ''}>+</button>
       </div>
     </div>`;
   }).join('');
-  $('modalTotal').textContent = rupiah(getTotals().total);
+  const { total } = getTotals();
+  $('modalTotal').textContent = rupiah(total + (area === 'ombe' ? 5000 : 0));
 }
 
 function renderArea() {
@@ -893,6 +963,7 @@ function renderArea() {
     </button>`).join('');
   $('areaInfo').textContent = area ? AREA[area].info : 'Pilih area pengantaran dulu ya.';
   $('ongkirNote').classList.toggle('hidden', area !== 'ombe');
+  $('ongkirNote').textContent = 'Estimasi ongkir Rp5.000–Rp10.000; sementara dihitung Rp5.000 dan dikonfirmasi toko.';
 
   const { total } = getTotals();
   if (area === 'ombe') {
@@ -930,7 +1001,8 @@ function renderFields() {
         class="w-full h-11 px-3 text-base sm:text-sm bg-stone-100 rounded-xl outline-none border border-transparent focus:bg-white focus:border-red-600">
     </div>`;
   let html = input('fName', 'Nama', 'text', 'Nama kamu', 'autocomplete="name"');
-  html += input('fPhone', 'Nomor WhatsApp', 'tel', '08xxxxxxxxxx', 'autocomplete="tel" inputmode="tel" pattern="(\\+62|62|0)8[1-9][0-9\\s\\-]{6,13}" title="Masukkan nomor WhatsApp Indonesia yang valid, contoh: 081234567890"');
+  html += input('fPhone', 'Nomor WhatsApp', 'tel', '08xxxxxxxxxx', 'autocomplete="tel" inputmode="tel" aria-describedby="phoneError"');
+  html += '<p id="phoneError" class="bh-phone-error" role="alert">Masukkan nomor Indonesia yang valid, misalnya 081234567890 atau +6281234567890.</p>';
   html += `
     <div>
       <label for="fAddr" class="block text-xs font-semibold text-stone-500 mb-1">Alamat Lengkap</label>
@@ -938,6 +1010,29 @@ function renderFields() {
         class="w-full px-3 py-2.5 text-base sm:text-sm bg-stone-100 rounded-xl outline-none border border-transparent focus:bg-white focus:border-red-600"></textarea>
     </div>`;
   $('fields').innerHTML = html;
+  $('fPhone').required = false;
+  $('fPhone').addEventListener('input', validatePhoneField);
+}
+
+function normalizedPhone(value) {
+  return String(value || '').replace(/[\s\-()+]/g, '');
+}
+
+function isValidPhone(value) {
+  const phone = normalizedPhone(value);
+  return /^(08\d{8,12}|628\d{7,11})$/.test(phone);
+}
+
+function validatePhoneField(force = false) {
+  const input = $('fPhone');
+  const error = $('phoneError');
+  const invalid = (force && !input.value.trim()) || (input.value.length > 0 && !isValidPhone(input.value));
+  input.classList.toggle('bh-invalid', invalid);
+  input.setAttribute('aria-invalid', String(invalid));
+  error.classList.toggle('show', invalid);
+  if (force && !input.value.trim()) error.textContent = 'Nomor WhatsApp wajib diisi.';
+  else error.textContent = 'Masukkan nomor Indonesia yang valid, misalnya 081234567890 atau +6281234567890.';
+  return !invalid;
 }
 
 // ================= OVERLAY / MODAL / TOAST =================
@@ -964,23 +1059,44 @@ function showToast(msg) {
 
 function changeQty(key, d) {
   if (!cart[key]) return;
-  cart[key].qty = Math.min(99, cart[key].qty + d);
+  const max = cartMaxQty(cart[key], key);
+  if (d > 0 && cart[key].qty >= max) {
+    showToast(`Stok ${getMenu(cart[key].id).name} yang tersedia hanya ${max} pcs`);
+    return;
+  }
+  cart[key].qty = Math.min(max, cart[key].qty + d);
   if (cart[key].qty <= 0) delete cart[key];
 }
 
+function cartMaxQty(item, key) {
+  let max = stockAvailable(item.id, key);
+  for (const id in item.addons) {
+    if (item.addons[id] > 0) max = Math.min(max, Math.floor(stockAvailable(id, key) / item.addons[id]));
+  }
+  return Math.max(1, Math.min(99, max));
+}
+
 // ================= POPUP PILIH ITEM =================
-function openItem(id) {
-  const m = menu.find(item => String(item.id) === String(id));
+function openItem(id, editKey = '') {
+  const m = getDisplayMenu(id);
   if (!m || m.habis) return;
+  const existingKey = editKey || Object.keys(cart).find(key => String(cart[key].id) === String(id));
+  const existing = existingKey ? cart[existingKey] : null;
+  if (!existing && stockAvailable(id) <= 0) {
+    showToast(`Stok ${m.name} sudah habis di keranjang`);
+    return;
+  }
   const firstOption = m.opts
-    ? (m.opts.find(option => !getMenu(m.variantIds[option])?.habis) || m.opts[0])
+    ? (existing ? existing.opt : m.opts.find(option => !getMenu(m.variantIds[option])?.habis) || m.opts[0])
     : '';
-  const selectedId = m.opts ? m.variantIds[firstOption] : m.id;
+  const selectedId = existing ? existing.id : m.opts ? m.variantIds[firstOption] : m.id;
   if (m.opts && getMenu(selectedId)?.habis) {
     showToast('Semua varian produk ini sedang habis');
     return;
   }
-  draft = { id: selectedId, groupId: m.id, opt: firstOption, addons: {}, note: '', qty: 1 };
+  draft = { id: selectedId, groupId: m.id, opt: existing ? existing.opt : firstOption,
+    addons: existing ? { ...existing.addons } : {}, note: existing ? existing.note : '',
+    qty: existing ? existing.qty : 1, editKey: existingKey || '' };
   $('itemName').textContent = m.name;
   $('itemDesc').textContent = m.desc;
   $('itemDesc').classList.toggle('hidden', !m.desc);
@@ -1001,6 +1117,7 @@ function renderItem() {
   const selected = getMenu(draft.id);
   const body = $('itemBody'), st = body.scrollTop;
   const ads = addonsFor(selected);
+  const selectedAddonCount = Object.values(draft.addons).reduce((total, count) => total + (Number(count) || 0), 0);
   let h = '';
   if (m.opts) {
     const isDonut = m.cat === 'donut';
@@ -1022,16 +1139,18 @@ function renderItem() {
   }
   if (ads.length) h += `
     <section class="bh-isec"><h4>Add on <small>Opsional</small></h4>
+      <p class="text-xs text-stone-500 mb-2">Maksimal 5 add-on per item · ${selectedAddonCount}/5 dipilih.</p>
       ${ads.map(a => {
         const n = draft.addons[a.id] || 0;
         const addonPrice = a.discountPercent
           ? `<s>${rupiah(a.basePrice)}</s> ${rupiah(a.price)} <span class="bh-tag discount">${a.discountPercent}% OFF</span>`
           : rupiah(a.price);
+        const addonMax = stockAvailable(a.id, draft.editKey);
         return `<div class="bh-arow">
           <div><p class="an">${esc(a.name)}</p><p class="ap">+ ${addonPrice}</p></div>
           <div class="bh-mini">
             ${n ? `<button type="button" data-adec="${esc(a.id)}" aria-label="Kurangi ${esc(a.name)}">−</button><span>${n}</span>` : ''}
-            <button type="button" class="plus" data-ainc="${esc(a.id)}" aria-label="Tambah ${esc(a.name)}">+</button>
+          <button type="button" class="plus" data-ainc="${esc(a.id)}" aria-label="Tambah ${esc(a.name)}" ${selectedAddonCount >= 5 || n >= 5 || addonMax <= n * draft.qty ? 'disabled' : ''}>+</button>
           </div></div>`;
       }).join('')}
     </section>`;
@@ -1044,7 +1163,11 @@ function renderItem() {
   $('itemPrice').innerHTML = selected.discountPercent
     ? `<s class="text-stone-400 text-sm font-medium mr-1">${rupiah(selected.basePrice)}</s><strong>${rupiah(selected.price)}</strong><span class="bh-tag discount ml-1">${selected.discountPercent}% OFF</span>`
     : rupiah(selected.price);
-  $('qVal').textContent = draft.qty;
+  $('qVal').max = draftMaxQty();
+  $('qVal').value = draft.qty;
+  $('qDec').disabled = draft.qty <= 1;
+  $('qInc').disabled = draft.qty >= draftMaxQty();
+  $('itemAdd').disabled = draftMaxQty() < 1;
   $('itemAddTotal').textContent = rupiah(draftTotal());
 }
 
@@ -1057,8 +1180,25 @@ $('itemOpts').addEventListener('click', e => {
     if (!variant || variant.habis) return;
     draft.opt = b.dataset.opt;
     if (product && product.variantIds) draft.id = product.variantIds[draft.opt];
+    if (draft.qty > draftMaxQty()) {
+      draft.qty = draftMaxQty();
+      showToast(`Jumlah dibatasi, stok varian tersedia maksimal ${draft.qty} pcs`);
+    }
   }
-  else if (b.dataset.ainc) draft.addons[b.dataset.ainc] = Math.min(5, (draft.addons[b.dataset.ainc] || 0) + 1);
+  else if (b.dataset.ainc) {
+    const addonId = b.dataset.ainc;
+    const selectedAddonCount = Object.values(draft.addons).reduce((total, count) => total + (Number(count) || 0), 0);
+    if (selectedAddonCount >= 5) {
+      showToast('Maksimal 5 add-on per item');
+      return;
+    }
+    const next = (draft.addons[addonId] || 0) + 1;
+    if (next * draft.qty > stockAvailable(addonId, draft.editKey)) {
+      showToast(`Stok ${getMenu(addonId).name} tidak mencukupi`);
+      return;
+    }
+    draft.addons[addonId] = Math.min(5, next);
+  }
   else if (b.dataset.adec) {
     const n = (draft.addons[b.dataset.adec] || 0) - 1;
     if (n <= 0) delete draft.addons[b.dataset.adec]; else draft.addons[b.dataset.adec] = n;
@@ -1069,11 +1209,31 @@ $('itemOpts').addEventListener('input', e => {
   if (e.target.id === 'itemNote' && draft) draft.note = e.target.value;
 });
 $('qDec').addEventListener('click', () => { if (draft && draft.qty > 1) { draft.qty--; renderItem(); } });
-$('qInc').addEventListener('click', () => { if (draft && draft.qty < 99) { draft.qty++; renderItem(); } });
+$('qInc').addEventListener('click', () => {
+  if (!draft) return;
+  if (draftMaxQty() < 1 || draft.qty >= draftMaxQty()) { showToast(`Stok tersedia maksimal ${draftMaxQty()} pcs`); return; }
+  draft.qty++; renderItem();
+});
+$('qVal').addEventListener('change', () => {
+  if (!draft) return;
+  const requested = Number($('qVal').value);
+  const max = draftMaxQty();
+  if (!Number.isInteger(requested) || requested < 1) draft.qty = 1;
+  else if (requested > max) {
+    draft.qty = max;
+    showToast(`Jumlah dibatasi, stok tersedia maksimal ${max} pcs`);
+  } else draft.qty = requested;
+  renderItem();
+});
 $('itemClose').addEventListener('click', closeItem);
 $('itemOverlay').addEventListener('click', e => { if (e.target === $('itemOverlay')) closeItem(); });
 $('itemAdd').addEventListener('click', () => {
   if (!draft) return;
+  const selectedAddonCount = Object.values(draft.addons).reduce((total, count) => total + (Number(count) || 0), 0);
+  if (selectedAddonCount > 5) {
+    showToast('Maksimal 5 add-on per item');
+    return;
+  }
   const selected = getMenu(draft.id);
   if (!selected || selected.habis || Object.keys(draft.addons).some(id => !getMenu(id) || getMenu(id).habis)) {
     showToast('Menu yang dipilih sudah tidak tersedia');
@@ -1081,8 +1241,12 @@ $('itemAdd').addEventListener('click', () => {
     return;
   }
   draft.note = draft.note.trim();
+  const max = draftMaxQty();
+  if (draft.qty > max) { showToast(`Stok tersedia maksimal ${max} pcs`); return; }
   const key = lineKey(draft);
-  if (cart[key]) cart[key].qty = Math.min(99, cart[key].qty + draft.qty);
+  if (draft.editKey) delete cart[draft.editKey];
+  if (draft.qty > max) { showToast(`Stok tersedia maksimal ${max} pcs`); return; }
+  if (cart[key]) cart[key].qty += draft.qty;
   else cart[key] = { id: draft.id, opt: draft.opt, addons: { ...draft.addons }, note: draft.note, qty: draft.qty };
   const name = getMenu(draft.id).name;
   closeItem();
@@ -1165,18 +1329,39 @@ document.addEventListener('keydown', e => {
 $('cartList').addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b) return;
+  if (b.dataset.editAddons) {
+    const item = cart[b.dataset.editAddons];
+    if (item) {
+      closeModal();
+      openItem(item.id, b.dataset.editAddons);
+    }
+    return;
+  }
   if (b.dataset.inc) changeQty(b.dataset.inc, 1);
   else if (b.dataset.dec) changeQty(b.dataset.dec, -1);
   else return;
   refreshCart();
   if (Object.keys(cart).length === 0) closeModal();
 });
+$('cartList').addEventListener('change', e => {
+  const input = e.target.closest('[data-qty]');
+  if (!input || !cart[input.dataset.qty]) return;
+  const item = cart[input.dataset.qty];
+  const requested = Number(input.value);
+  const max = cartMaxQty(item, input.dataset.qty);
+  if (!Number.isInteger(requested) || requested < 1) item.qty = 1;
+  else if (requested > max) {
+    item.qty = max;
+    showToast(`Jumlah dibatasi, stok tersedia maksimal ${max} pcs`);
+  } else item.qty = requested;
+  refreshCart();
+});
 
 $('areaSeg').addEventListener('click', e => {
   const b = e.target.closest('[data-area]');
   if (!b) return;
   area = b.dataset.area;
-  simpanCart(); renderArea();
+  simpanCart(); renderCartList(); renderArea();
 });
 
 // ================= POPUP PROMO =================
@@ -1232,7 +1417,7 @@ function buatPesan(noStruk = '') {
     `WhatsApp: ${$('fPhone').value.trim()}\n` +
     `Alamat: ${$('fAddr').value.trim()}\n` +
     `Area: ${AREA[area].label}\n` +
-    `Ongkir: ${ongkir === 0 ? 'Gratis' : rp(ongkir) + ' (estimasi awal, konfirmasi toko)'}\n\n` +
+    `Ongkir: ${ongkir === 0 ? 'Gratis' : 'Estimasi Rp5.000–Rp10.000 (sementara dihitung ' + rp(ongkir) + ', konfirmasi toko)'}\n\n` +
     `Detail Pesanan:\n${items}\n` +
     `Total Menu: ${rp(total)}\n` +
     `Total + Ongkir (estimasi): ${rp(total + ongkir)}`;
@@ -1281,12 +1466,14 @@ $('orderForm').addEventListener('submit', async e => {
     return;
   }
   if (!phone) {
+    validatePhoneField(true);
     showToast('Nomor WhatsApp wajib diisi');
     $('fPhone').focus();
     return;
   }
-  if (!/^(\+62|62|0)8[1-9][0-9]{7,11}$/.test(phone)) {
-    showToast('Format nomor WhatsApp tidak valid (contoh: 081234567890)');
+  if (!isValidPhone(rawPhone)) {
+    validatePhoneField();
+    showToast('Format nomor tidak valid. Gunakan 08xx atau +628xx, 10–14 digit.');
     $('fPhone').focus();
     return;
   }
@@ -1306,19 +1493,51 @@ $('orderForm').addEventListener('submit', async e => {
 
   // Ambil salinan items untuk background sync ke database sebelum cart direset
   const items = [];
+  let lineIndex = 0;
   for (const key in cart) {
     const line = cart[key];
-    items.push({ id_menu: String(line.id), qty: Number(line.qty), catatan: line.note || '' });
+    const lineReference = `delivery-line-${lineIndex++}`;
+    items.push({
+      id_menu: String(line.id),
+      qty: Number(line.qty),
+      catatan: [line.note, line.opt ? `Varian: ${line.opt}` : ''].filter(Boolean).join(' · '),
+      line_reference: lineReference
+    });
     for (const addonId in line.addons) {
       items.push({
         id_menu: String(addonId),
         qty: Number(line.qty) * Number(line.addons[addonId]),
-        catatan: 'Add-on'
+        catatan: 'Add-on',
+        is_addon: true,
+        addon_for_line: lineReference,
+        addon_count_per_item: Number(line.addons[addonId])
       });
     }
   }
 
-  // 3. Otomatis bersihkan / kosongkan keranjang aktif & reset UI keranjang
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/delivery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+      no_struk: noStruk,
+      nama_pelanggan: name,
+      no_telepon: phone,
+      alamat_lengkap: address,
+      area_pengiriman: AREA[area].label,
+      area_code: area,
+      ongkir: area === 'ombe' ? 5000 : 0,
+      items
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || result.message || 'Pesanan gagal disimpan.');
+  } catch (err) {
+    console.error('Gagal menyimpan pesanan delivery:', err);
+    showToast(err.message || 'Pesanan gagal disimpan. Coba lagi.');
+    return;
+  }
+
   cart = {};
   try {
     localStorage.removeItem('bakehaus_cart2');
@@ -1329,32 +1548,17 @@ $('orderForm').addEventListener('submit', async e => {
   renderGrid();
   renderCartList();
   closeModal();
-
-  showToast(`Membuka WhatsApp untuk order ${noStruk}...`);
-
-  // 4. Buka / redirect langsung ke WhatsApp
+  showToast(`Pesanan ${noStruk} tersimpan. Membuka WhatsApp...`);
   bukaWA(waUrl);
-
-  // 5. Simpan pesanan ke database backend/Supabase secara asynchronous (non-blocking)
-  fetch(`${API_BASE_URL}/api/delivery`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      no_struk: noStruk,
-      nama_pelanggan: name,
-      no_telepon: phone,
-      alamat_lengkap: address,
-      area_pengiriman: AREA[area].label,
-      area_code: area,
-      items
-    }),
-    keepalive: true
-  }).catch(err => {
-    console.warn('Sync pesanan delivery ke database:', err);
-  });
 });
 
 // ================= INIT =================
+const refreshMenuWhenVisible = () => {
+  if (!document.hidden) loadMenuFromAPI();
+};
+window.addEventListener('focus', refreshMenuWhenVisible);
+document.addEventListener('visibilitychange', refreshMenuWhenVisible);
+setInterval(refreshMenuWhenVisible, 15000);
 renderFields(); initPromo(); loadMenuFromAPI();
 </script>
 </body>
