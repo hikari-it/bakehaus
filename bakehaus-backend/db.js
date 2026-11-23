@@ -8,6 +8,7 @@ const pool = new Pool({
 });
 
 let menuSchemaReady;
+let deliveryIdempotencySchemaReady;
 const ensureMenuDiscountColumn = () => {
   if (!menuSchemaReady) {
     menuSchemaReady = (async () => {
@@ -215,6 +216,35 @@ const ensureMenuDiscountColumn = () => {
   return menuSchemaReady;
 };
 
+const ensureDeliveryIdempotencyTable = () => {
+  if (!deliveryIdempotencySchemaReady) {
+    deliveryIdempotencySchemaReady = (async () => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('bakehaus_schema_migration'), hashtext('delivery_idempotency_v1'))");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS delivery_idempotency (
+            idempotency_key UUID PRIMARY KEY,
+            response JSONB,
+            created_at TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'Asia/Jakarta')
+          )
+        `);
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    })().catch((err) => {
+      deliveryIdempotencySchemaReady = null;
+      throw err;
+    });
+  }
+  return deliveryIdempotencySchemaReady;
+};
+
 pool.on('error', (err) => {
   console.error('Unexpected PostgreSQL client error:', err);
 });
@@ -223,4 +253,5 @@ module.exports = {
   query: (text, params) => pool.query(text, params),
   getClient: () => pool.connect(),
   ensureMenuDiscountColumn,
+  ensureDeliveryIdempotencyTable,
 };

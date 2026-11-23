@@ -3,7 +3,7 @@ DROP VIEW IF EXISTS v_delivery_orders, v_menu_master, v_users_staff, v_transaksi
 DROP TABLE IF EXISTS menu_label, addon_target_category, custom_labels, label_menu CASCADE;
 DROP TABLE IF EXISTS detail_delivery, pelanggan CASCADE;
 DROP TABLE IF EXISTS order_tersimpan_item, order_tersimpan, detail_transaksi, transaksi,
-                     bakehaus_schema_migrations, users, menu, kategori_menu, metode_pembayaran, pos, karyawan, toko CASCADE;
+                     delivery_idempotency, bakehaus_schema_migrations, users, menu, kategori_menu, metode_pembayaran, pos, karyawan, toko CASCADE;
 DROP FUNCTION IF EXISTS fn_kurangi_stok();
 CREATE TABLE toko (
     id_toko      VARCHAR(10)  PRIMARY KEY,
@@ -121,6 +121,11 @@ CREATE TABLE detail_delivery (
 );
 ALTER TABLE detail_delivery ADD COLUMN IF NOT EXISTS area_code VARCHAR(30);
 CREATE INDEX idx_detail_delivery_status ON detail_delivery(status_delivery);
+CREATE TABLE delivery_idempotency (
+    idempotency_key UUID PRIMARY KEY,
+    response JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'Asia/Jakarta')
+);
 CREATE TABLE custom_labels (
     id_label   SERIAL PRIMARY KEY,
     nama_label VARCHAR(50) NOT NULL UNIQUE,

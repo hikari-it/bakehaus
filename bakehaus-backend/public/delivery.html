@@ -719,6 +719,9 @@ let tagFilter = '';
 let area = '';
 let cart = {};   // { lineKey: { id, opt, addons:{id:n}, note, qty } }
 let draft = null; // item yang lagi dibuka di popup
+let isSubmittingOrder = false;
+let deliveryIdempotencyKey = null;
+let deliveryCartSignature = null;
 
 const $ = (id) => document.getElementById(id);
 const rupiah = (n) => 'Rp ' + n.toLocaleString('id-ID');
@@ -983,10 +986,47 @@ function renderArea() {
 
 function updateSubmit() {
   const b = $('btnSubmit');
+  if (isSubmittingOrder) {
+    b.disabled = true;
+    b.style.pointerEvents = 'none';
+    b.style.opacity = '0.6';
+    b.textContent = 'Memproses Pesanan...';
+    return;
+  }
+  b.style.pointerEvents = '';
+  b.style.opacity = '';
   const { total } = getTotals();
   if (!area) { b.disabled = true; b.textContent = 'Pilih area pengiriman dulu'; }
   else if (area === 'ombe' && total < MIN_OMBE) { b.disabled = true; b.textContent = `Kurang ${rp(MIN_OMBE - total)} dari minimal order`; }
   else { b.disabled = false; b.textContent = 'Delivery by WA'; }
+}
+
+function getDeliveryIdempotencyKey() {
+  const cartSignature = JSON.stringify(cart);
+  if (deliveryCartSignature === cartSignature && deliveryIdempotencyKey) return deliveryIdempotencyKey;
+
+  deliveryCartSignature = cartSignature;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem('bakehaus_delivery_idempotency') || 'null');
+    if (saved && saved.cartSignature === cartSignature && typeof saved.key === 'string') {
+      deliveryIdempotencyKey = saved.key;
+      return deliveryIdempotencyKey;
+    }
+  } catch (e) {}
+
+  deliveryIdempotencyKey = crypto.randomUUID();
+  try {
+    sessionStorage.setItem('bakehaus_delivery_idempotency', JSON.stringify({
+      cartSignature,
+      key: deliveryIdempotencyKey
+    }));
+  } catch (e) {}
+  return deliveryIdempotencyKey;
+}
+
+function setOrderSubmitting(isSubmitting) {
+  isSubmittingOrder = isSubmitting;
+  updateSubmit();
 }
 
 function refreshCart() {
@@ -1438,20 +1478,25 @@ function bukaWA(url) {
 }
 
 $('orderForm').addEventListener('submit', async e => {
+  if (isSubmittingOrder) return;
+  setOrderSubmitting(true);
   e.preventDefault();
 
   // 1. Validasi SEBELUM mengosongkan keranjang atau redirect
   if (Object.keys(cart).length === 0) {
     showToast('Keranjang belanja masih kosong');
+    setOrderSubmitting(false);
     return;
   }
   if (!area || !AREA[area]) {
     showToast('Pilih area pengiriman terlebih dahulu');
+    setOrderSubmitting(false);
     return;
   }
   const { total } = getTotals();
   if (area === 'ombe' && total < MIN_OMBE) {
     showToast(`Minimal order area Ombe ke depan adalah ${rp(MIN_OMBE)}`);
+    setOrderSubmitting(false);
     return;
   }
 
@@ -1463,33 +1508,33 @@ $('orderForm').addEventListener('submit', async e => {
   if (!name) {
     showToast('Nama pelanggan wajib diisi');
     $('fName').focus();
+    setOrderSubmitting(false);
     return;
   }
   if (!phone) {
     validatePhoneField(true);
     showToast('Nomor WhatsApp wajib diisi');
     $('fPhone').focus();
+    setOrderSubmitting(false);
     return;
   }
   if (!isValidPhone(rawPhone)) {
     validatePhoneField();
     showToast('Format nomor tidak valid. Gunakan 08xx atau +628xx, 10–14 digit.');
     $('fPhone').focus();
+    setOrderSubmitting(false);
     return;
   }
   if (!address) {
     showToast('Alamat lengkap pengiriman wajib diisi');
     $('fAddr').focus();
+    setOrderSubmitting(false);
     return;
   }
 
   // Generate nomor order acak untuk ringkasan
   const randSuffix = Math.floor(10000 + Math.random() * 90000);
-  const noStruk = `#1-${randSuffix}`;
-
-  // 2. Generate WhatsApp URL dengan ringkasan order bersih & ter-encode
-  const pesanWA = buatPesan(noStruk);
-  const waUrl = `https://wa.me/${NOMOR_WA_TOKO}?text=${encodeURIComponent(pesanWA)}`;
+  let noStruk = `#1-${randSuffix}`;
 
   // Ambil salinan items untuk background sync ke database sebelum cart direset
   const items = [];
@@ -1521,6 +1566,7 @@ $('orderForm').addEventListener('submit', async e => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
       no_struk: noStruk,
+      idempotency_key: getDeliveryIdempotencyKey(),
       nama_pelanggan: name,
       no_telepon: phone,
       alamat_lengkap: address,
@@ -1532,12 +1578,19 @@ $('orderForm').addEventListener('submit', async e => {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || result.message || 'Pesanan gagal disimpan.');
+    noStruk = result.no_struk || result.order?.no_struk || noStruk;
   } catch (err) {
     console.error('Gagal menyimpan pesanan delivery:', err);
     showToast(err.message || 'Pesanan gagal disimpan. Coba lagi.');
+    setOrderSubmitting(false);
     return;
   }
 
+  const pesanWA = buatPesan(noStruk);
+  const waUrl = `https://wa.me/${NOMOR_WA_TOKO}?text=${encodeURIComponent(pesanWA)}`;
+  deliveryIdempotencyKey = null;
+  deliveryCartSignature = null;
+  try { sessionStorage.removeItem('bakehaus_delivery_idempotency'); } catch (e) {}
   cart = {};
   try {
     localStorage.removeItem('bakehaus_cart2');
@@ -1548,6 +1601,7 @@ $('orderForm').addEventListener('submit', async e => {
   renderGrid();
   renderCartList();
   closeModal();
+  setOrderSubmitting(false);
   showToast(`Pesanan ${noStruk} tersimpan. Membuka WhatsApp...`);
   bukaWA(waUrl);
 });

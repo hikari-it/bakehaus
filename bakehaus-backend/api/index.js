@@ -585,7 +585,12 @@ app.delete('/api/menu/:id_menu', requireRole('admin'), async (req, res) => {
 // 3. DELIVERY WEBSITE ORDER ENDPOINTS
 // ==========================================
 app.post('/api/delivery', optionalToken, async (req, res) => {
-  const { nama_pelanggan, no_telepon, alamat_lengkap, area_pengiriman, area_code = null, catatan_delivery = '', items = [] } = req.body;
+  const { nama_pelanggan, no_telepon, alamat_lengkap, area_pengiriman, area_code = null, catatan_delivery = '', items = [], idempotency_key: rawIdempotencyKey } = req.body;
+  if (rawIdempotencyKey !== undefined &&
+      (typeof rawIdempotencyKey !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawIdempotencyKey))) {
+    return res.status(400).json({ error: 'Idempotency key tidak valid' });
+  }
+  const idempotencyKey = rawIdempotencyKey ? rawIdempotencyKey.toLowerCase() : null;
   const normalizedPhone = String(no_telepon || '').replace(/[\s\-()+]/g, '');
   const isValidPhone = /^(08\d{8,12}|628\d{7,11})$/.test(normalizedPhone);
   if (!String(nama_pelanggan || '').trim() || !isValidPhone || !String(alamat_lengkap || '').trim() ||
@@ -599,10 +604,33 @@ app.post('/api/delivery', optionalToken, async (req, res) => {
   if (!areaCode) return res.status(400).json({ error: 'Area pengiriman tidak dikenal' });
   const ongkir = areaCode === 'ombe' ? 5000 : 0;
 
-  const client = await db.getClient();
+  let client;
   try {
     await db.ensureMenuDiscountColumn();
+    await db.ensureDeliveryIdempotencyTable();
+    client = await db.getClient();
     await client.query('BEGIN');
+
+    if (idempotencyKey) {
+      const reserved = await client.query(
+        `INSERT INTO delivery_idempotency (idempotency_key)
+         VALUES ($1)
+         ON CONFLICT (idempotency_key) DO NOTHING
+         RETURNING idempotency_key`,
+        [idempotencyKey]
+      );
+      if (!reserved.rows.length) {
+        const previous = await client.query(
+          'SELECT response FROM delivery_idempotency WHERE idempotency_key = $1',
+          [idempotencyKey]
+        );
+        if (!previous.rows.length || !previous.rows[0].response) {
+          throw new Error('Respons pesanan idempotensi tidak ditemukan');
+        }
+        await client.query('COMMIT');
+        return res.status(200).json(previous.rows[0].response);
+      }
+    }
 
     let idPelanggan;
     const cekPelanggan = await client.query('SELECT id_pelanggan FROM pelanggan WHERE no_telepon = $1 LIMIT 1', [normalizedPhone]);
@@ -655,8 +683,7 @@ app.post('/api/delivery', optionalToken, async (req, res) => {
       [noStruk, idPelanggan, alamat_lengkap.trim(), area_pengiriman, areaCode, ongkir, catatan_delivery]
     );
 
-    await client.query('COMMIT');
-    res.status(201).json({
+    const responseBody = {
       success: true,
       message: 'Pesanan delivery berhasil dibuat',
       no_struk: noStruk,
@@ -672,12 +699,20 @@ app.post('/api/delivery', optionalToken, async (req, res) => {
         total_tagihan: subtotalBelanja + ongkir,
         tanggal_waktu: new Date().toISOString()
       }
-    });
+    };
+    if (idempotencyKey) {
+      await client.query(
+        'UPDATE delivery_idempotency SET response = $2 WHERE idempotency_key = $1',
+        [idempotencyKey, responseBody]
+      );
+    }
+    await client.query('COMMIT');
+    res.status(201).json(responseBody);
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     res.status(400).json({ success: false, message: err.message || 'Gagal memproses pesanan delivery', error: err.message });
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
 
