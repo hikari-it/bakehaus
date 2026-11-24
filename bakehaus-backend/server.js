@@ -219,9 +219,16 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/users', requireRole('admin'), async (req, res) => {
   try {
-    const result = await db.query('SELECT * FROM v_users_staff ORDER BY id_user ASC');
+    const result = await db.query(
+      `SELECT u.id_user, u.id_karyawan, k.nama_karyawan AS nama, u.username, u.role, u.is_aktif
+       FROM users u
+       JOIN karyawan k ON k.id_karyawan = u.id_karyawan
+       WHERE u.is_aktif = TRUE
+       ORDER BY u.id_user ASC`
+    );
     res.json(result.rows);
   } catch (err) {
+    console.error('GET /api/users error:', err);
     res.status(500).json({ error: 'Gagal memuat daftar staff' });
   }
 });
@@ -279,7 +286,6 @@ app.post('/api/users', requireRole('admin'), async (req, res) => {
 // ==========================================
 app.get('/api/menu', optionalToken, async (req, res) => {
   try {
-    await db.ensureMenuDiscountColumn();
     const { include_inactive, category, search } = req.query;
     const conditions = ['COALESCE(m.is_deleted, FALSE) = FALSE'];
     const params = [];
@@ -321,7 +327,6 @@ app.get('/api/menu', optionalToken, async (req, res) => {
           m.rating_adonan,
           m.is_rekomendasi,
           m.is_baru_manual,
-          m.is_pedas,
           m.varian_menu,
           m.deskripsi,
           COALESCE(m.is_aktif, TRUE) AS aktif,
@@ -357,7 +362,6 @@ app.get('/api/menu', optionalToken, async (req, res) => {
         rating_adonan,
         is_rekomendasi,
         is_baru_manual,
-        is_pedas,
         varian_menu,
         deskripsi,
         created_at,
@@ -398,7 +402,6 @@ app.get('/api/kategori', async (req, res) => {
 
 app.get('/api/labels', optionalToken, async (req, res) => {
   try {
-    await db.ensureMenuDiscountColumn();
     const result = await db.query('SELECT id_label, nama_label, warna FROM custom_labels ORDER BY nama_label');
     res.json(result.rows);
   } catch (err) {
@@ -414,7 +417,6 @@ app.post('/api/labels', requireRole('admin'), async (req, res) => {
     return res.status(400).json({ error: 'Nama label dan warna hex (#RRGGBB) wajib diisi' });
   }
   try {
-    await db.ensureMenuDiscountColumn();
     const result = await db.query(
       'INSERT INTO custom_labels (nama_label, warna) VALUES ($1, $2) RETURNING id_label, nama_label, warna',
       [namaLabel, warna]
@@ -467,6 +469,17 @@ app.delete('/api/labels/:id_label', requireRole('admin'), async (req, res) => {
   }
 });
 
+function parseMenuPrice(value) {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  }
+  if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) {
+    return null;
+  }
+  const parsed = Number(value.trim());
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
 app.post('/api/menu', requireRole('admin'), async (req, res) => {
   const {
     id_kategori,
@@ -478,16 +491,19 @@ app.post('/api/menu', requireRole('admin'), async (req, res) => {
     rating_adonan = null,
     is_rekomendasi = false,
     is_baru_manual = false,
-    is_pedas = false,
     varian_menu = [],
     deskripsi = null,
     label_ids = [],
     addon_target_categories = [],
   } = req.body;
 
-  if (!id_kategori || !nama_menu || harga_satuan === undefined ||
+  const hargaSatuan = parseMenuPrice(harga_satuan);
+  if (!id_kategori || typeof nama_menu !== 'string' || !nama_menu.trim() ||
       !Array.isArray(label_ids) || !Array.isArray(addon_target_categories) || !Array.isArray(varian_menu)) {
     return res.status(400).json({ error: 'Kategori, nama menu, dan harga satuan wajib diisi' });
+  }
+  if (hargaSatuan === null) {
+    return res.status(400).json({ error: 'Harga satuan harus berupa bilangan bulat non-negatif' });
   }
   const diskonPersen = Number(diskon_persen);
   if (!Number.isInteger(diskonPersen) || diskonPersen < 0 || diskonPersen > 100) {
@@ -496,7 +512,6 @@ app.post('/api/menu', requireRole('admin'), async (req, res) => {
 
   let client;
   try {
-    await db.ensureMenuDiscountColumn();
     client = await db.getClient();
     await client.query('BEGIN');
     const katRes = await client.query('SELECT kode_kategori FROM kategori_menu WHERE id_kategori = $1', [id_kategori]);
@@ -517,22 +532,21 @@ app.post('/api/menu', requireRole('admin'), async (req, res) => {
 
     const variants = [...new Set(varian_menu.map(value => String(value).trim()).filter(Boolean))];
     const insertRes = await client.query(
-      `INSERT INTO menu (id_menu, sku, id_kategori, nama_menu, harga_satuan, diskon_persen, stok, adonan, rating_adonan, is_rekomendasi, is_baru_manual, is_pedas, varian_menu, deskripsi, is_aktif, is_deleted)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, TRUE, FALSE)
+      `INSERT INTO menu (id_menu, sku, id_kategori, nama_menu, harga_satuan, diskon_persen, stok, adonan, rating_adonan, is_rekomendasi, is_baru_manual, varian_menu, deskripsi, is_aktif, is_deleted)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, TRUE, FALSE)
        RETURNING *`,
       [
         idMenu,
         sku,
         id_kategori,
         nama_menu.trim(),
-        harga_satuan,
+        hargaSatuan,
         diskonPersen,
         stok === '' ? null : stok,
         adonan || null,
         adonan ? rating_adonan || 2 : null,
         is_rekomendasi,
         is_baru_manual,
-        is_pedas,
         variants,
         deskripsi ? String(deskripsi).trim() || null : null,
       ]
@@ -552,13 +566,16 @@ app.post('/api/menu', requireRole('admin'), async (req, res) => {
   }
 });
 
-app.patch('/api/menu/:id_menu', requireRole('admin'), async (req, res) => {
+const updateMenuHandler = async (req, res) => {
   const { id_menu } = req.params;
-  const { nama_menu, harga_satuan, diskon_persen, stok, is_rekomendasi, is_baru_manual, is_pedas, is_aktif, deskripsi, id_kategori, label_ids, addon_target_categories, varian_menu } = req.body;
+  const { nama_menu, harga_satuan, diskon_persen, stok, is_rekomendasi, is_baru_manual, is_aktif, deskripsi, id_kategori, label_ids, addon_target_categories, varian_menu } = req.body;
 
   let client;
   try {
-    await db.ensureMenuDiscountColumn();
+    const hargaSatuan = harga_satuan === undefined ? null : parseMenuPrice(harga_satuan);
+    if (harga_satuan !== undefined && hargaSatuan === null) {
+      return res.status(400).json({ error: 'Harga satuan harus berupa bilangan bulat non-negatif' });
+    }
     if (label_ids !== undefined && !Array.isArray(label_ids)) return res.status(400).json({ error: 'label_ids harus berupa daftar' });
     if (addon_target_categories !== undefined && !Array.isArray(addon_target_categories)) return res.status(400).json({ error: 'addon_target_categories harus berupa daftar' });
     if (varian_menu !== undefined && !Array.isArray(varian_menu)) return res.status(400).json({ error: 'varian_menu harus berupa daftar' });
@@ -580,22 +597,20 @@ app.patch('/api/menu/:id_menu', requireRole('admin'), async (req, res) => {
            stok = CASE WHEN $3::boolean THEN $4::int ELSE stok END,
            is_rekomendasi = COALESCE($5, is_rekomendasi),
            is_baru_manual = COALESCE($6, is_baru_manual),
-           is_pedas = COALESCE($7, is_pedas),
-           is_aktif = COALESCE($8, is_aktif),
-           deskripsi = CASE WHEN $10::boolean THEN $11::text ELSE deskripsi END,
-           id_kategori = COALESCE($12, id_kategori),
-           diskon_persen = COALESCE($13, diskon_persen),
-           varian_menu = CASE WHEN $14::boolean THEN $15::text[] ELSE varian_menu END
-       WHERE id_menu = $9
+           is_aktif = COALESCE($7, is_aktif),
+           deskripsi = CASE WHEN $9::boolean THEN $10::text ELSE deskripsi END,
+           id_kategori = COALESCE($11, id_kategori),
+           diskon_persen = COALESCE($12, diskon_persen),
+           varian_menu = CASE WHEN $13::boolean THEN $14::text[] ELSE varian_menu END
+       WHERE id_menu = $8
        RETURNING *`,
       [
         nama_menu ?? null,
-        harga_satuan ?? null,
+        hargaSatuan,
         updateStok,
         stok === '' ? null : stok,
         is_rekomendasi ?? null,
         is_baru_manual ?? null,
-        is_pedas ?? null,
         is_aktif ?? null,
         id_menu,
         updateDesk,
@@ -648,12 +663,14 @@ app.patch('/api/menu/:id_menu', requireRole('admin'), async (req, res) => {
   } finally {
     if (client) client.release();
   }
-});
+};
+
+app.patch('/api/menu/:id_menu', requireRole('admin'), updateMenuHandler);
+app.put('/api/menu/:id_menu', requireRole('admin'), updateMenuHandler);
 
 app.delete('/api/menu/:id_menu', requireRole('admin'), async (req, res) => {
   let client;
   try {
-    await db.ensureMenuDiscountColumn();
     client = await db.getClient();
     await client.query('BEGIN');
     const result = await deleteMenuOrDeactivate(client, req.params.id_menu);
@@ -681,7 +698,6 @@ app.post('/api/delivery', async (req, res) => {
     no_telepon,
     alamat_lengkap,
     area_pengiriman,
-    area_code = null,
     ongkir = 0,
     catatan_delivery = '',
     items = [],
@@ -696,7 +712,6 @@ app.post('/api/delivery', async (req, res) => {
 
   const client = await db.getClient();
   try {
-    await db.ensureMenuDiscountColumn();
     await client.query('BEGIN');
 
     // 1. Cek atau daftarkan pelanggan berdasarkan no_telepon
@@ -726,9 +741,9 @@ app.post('/api/delivery', async (req, res) => {
     // 3. Insert ke tabel transaksi
     await client.query(
       `INSERT INTO transaksi (
-        no_struk, tanggal_waktu, no_antrian, tipe_pesanan, nominal_bayar, persen_pajak,
+        no_struk, tanggal_waktu, no_antrian, tipe_pesanan, nominal_bayar,
         id_toko, id_metode, asal_pesanan, status_pesanan
-      ) VALUES ($1, NOW() AT TIME ZONE 'Asia/Jakarta', $2, 'Delivery', 0, 0, 'T01', 'MTD01', 'Website', 'Pending')`,
+      ) VALUES ($1, NOW() AT TIME ZONE 'Asia/Jakarta', $2, 'Delivery', 0, 'T01', 'MTD01', 'Website', 'Pending')`,
       [noStruk, noAntrian]
     );
 
@@ -752,9 +767,9 @@ app.post('/api/delivery', async (req, res) => {
     // 5. Insert ke detail_delivery
     await client.query(
       `INSERT INTO detail_delivery (
-        no_struk, id_pelanggan, alamat_lengkap, area_pengiriman, area_code, ongkir, catatan_delivery, status_delivery
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'Pending')`,
-      [noStruk, idPelanggan, alamat_lengkap.trim(), area_pengiriman, area_code, ongkir, catatan_delivery]
+        no_struk, id_pelanggan, alamat_lengkap, area_pengiriman, ongkir, catatan_delivery, status_delivery
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'Pending')`,
+      [noStruk, idPelanggan, alamat_lengkap.trim(), area_pengiriman, ongkir, catatan_delivery]
     );
 
     await client.query('COMMIT');
@@ -896,7 +911,6 @@ app.post('/api/transaksi', requireRole('admin', 'kasir'), async (req, res) => {
   const {
     tipe_pesanan = 'Dine In',
     nominal_bayar,
-    persen_pajak = 0,
     id_toko = 'T01',
     id_karyawan = 'E03',
     id_pos = 'P01',
@@ -912,17 +926,16 @@ app.post('/api/transaksi', requireRole('admin', 'kasir'), async (req, res) => {
 
   const client = await db.getClient();
   try {
-    await db.ensureMenuDiscountColumn();
     await client.query('BEGIN');
 
     const { noStruk, noAntrian } = await generateOrderMeta(client, id_toko);
 
     await client.query(
       `INSERT INTO transaksi (
-        no_struk, tanggal_waktu, no_antrian, tipe_pesanan, nominal_bayar, persen_pajak,
+        no_struk, tanggal_waktu, no_antrian, tipe_pesanan, nominal_bayar,
         id_toko, id_karyawan, id_pos, id_metode, asal_pesanan, status_pesanan
-      ) VALUES ($1, NOW() AT TIME ZONE 'Asia/Jakarta', $2, $3, $4, $5, $6, $7, $8, $9, 'POS', 'Completed')`,
-      [noStruk, noAntrian, tipe_pesanan, nominal_bayar, persen_pajak, id_toko, id_karyawan, id_pos, id_metode]
+      ) VALUES ($1, NOW() AT TIME ZONE 'Asia/Jakarta', $2, $3, $4, $5, $6, $7, $8, 'POS', 'Completed')`,
+      [noStruk, noAntrian, tipe_pesanan, nominal_bayar, id_toko, id_karyawan, id_pos, id_metode]
     );
 
     for (const item of items) {
@@ -966,6 +979,7 @@ app.get('/api/transaksi', requireRole('admin'), async (req, res) => {
   try {
     const result = await db.query(`
       SELECT v.*, v.tanggal_waktu AT TIME ZONE 'Asia/Jakarta' AS waktu, t.asal_pesanan, t.status_pesanan, mp.nama_metode, k.nama_karyawan,
+             dd.status_delivery, p.nama_pelanggan, p.no_telepon, dd.alamat_lengkap, dd.area_pengiriman,
              COALESCE(dd.ongkir, 0) AS ongkir,
              (v.total_tagihan + COALESCE(dd.ongkir, 0)) AS grand_total,
              COALESCE(
@@ -988,6 +1002,7 @@ app.get('/api/transaksi', requireRole('admin'), async (req, res) => {
       LEFT JOIN metode_pembayaran mp ON mp.id_metode = v.id_metode
       LEFT JOIN karyawan k ON k.id_karyawan = v.id_karyawan
       LEFT JOIN detail_delivery dd ON dd.no_struk = v.no_struk
+      LEFT JOIN pelanggan p ON p.id_pelanggan = dd.id_pelanggan
       ORDER BY v.tanggal_waktu DESC
       LIMIT 150
     `);
@@ -1138,9 +1153,16 @@ app.delete('/api/order-tersimpan/:id', requireRole('admin', 'kasir'), async (req
 // ==========================================
 const PORT = process.env.PORT || 3000;
 if (process.env.NODE_ENV !== 'production') {
-  app.listen(PORT, () => {
-    console.log(`Server Bake Haus berjalan di http://localhost:${PORT}`);
-  });
+  db.initializeSchema()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Server Bake Haus berjalan di http://localhost:${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error('Schema initialization failed:', err);
+      process.exitCode = 1;
+    });
 }
 
 module.exports = app;

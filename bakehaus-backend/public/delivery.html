@@ -548,7 +548,7 @@ async function loadMenuFromAPI() {
         if (row.is_paling_laris || row.is_rekomendasi) {
           itemTags.push('best');
         }
-        if (row.is_pedas || (meta && Array.isArray(meta.tags) && meta.tags.includes('spicy'))) {
+        if (meta && Array.isArray(meta.tags) && meta.tags.includes('spicy')) {
           itemTags.push('spicy');
         }
         if (row.is_baru || row.is_baru_manual) {
