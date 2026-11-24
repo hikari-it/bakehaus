@@ -409,15 +409,14 @@ async function enterApp(f,r){
  const adm=f.role==="admin";$("#app").classList.toggle("adm",adm);const tabs=adm?[["admin","Dashboard"]]:[["term","Terminal"],["orders","Orders"],["delivery","Delivery"]];
  $("#tabs").innerHTML=tabs.map(t=>`<button class="tab" data-v="${t[0]}">${t[1]}</button>`).join("");
  document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>go(b.dataset.v));
- await loadMenuAPI();
- if(!me){bootMsg(false);return}                   // 401 -> sudah logout
- const usersFailed=adm&&!await loadUsers();
- if(!me){bootMsg(false);return}
+ const warm=store.g("bh_src","")==="api"&&Date.now()-store.g("bh_menu_ts",0)<3e5&&Date.now()-store.g("bh_orders_ts",0)<3e5;
+ const menuP=loadMenuAPI(),ordersP=syncOrders(),usersP=adm?loadUsers():Promise.resolve(true);
+ usersP.then(ok=>{if(!me)return;if(!ok)alert("Gagal memuat data pengguna dari server. Anda tetap masuk; periksa koneksi lalu coba lagi.");else if(view==="admin"&&page==="staff")drawAdmin()});
+ if(!warm){await Promise.all([menuP,ordersP]);if(!me){bootMsg(false);return}}   // cache lama/kosong: tunggu server
  go(r&&tabs.some(t=>t[0]===r.view)?r.view:tabs[0][0]);
  if(adm&&r&&r.page&&r.page!=="dash"){page=r.page;drawAdmin()}
  startPoll();bootMsg(false);saveSes();
- if(usersFailed)alert("Gagal memuat data pengguna dari server. Anda tetap masuk; periksa koneksi lalu coba lagi.")}
-$("#lf").onsubmit=async e=>{e.preventDefault();const un=$("#u").value.trim().toLowerCase(),pw=$("#p").value;$("#err").textContent="";const f=await apiLogin(un,pw);
+ if(warm)Promise.all([menuP,ordersP]).then(([,oc])=>{if(me&&(menuCatalogChanged||oc))redrawCurrent()})}$("#lf").onsubmit=async e=>{e.preventDefault();const un=$("#u").value.trim().toLowerCase(),pw=$("#p").value;$("#err").textContent="";const f=await apiLogin(un,pw);
  if(!f){$("#err").textContent="Username atau password salah.";return}
  await enterApp(f)};
  const logout=()=>{try{sessionStorage.removeItem(SES)}catch(e){}
@@ -1031,7 +1030,33 @@ async function loadDlv(){
  catch(e){if(mutationVersion===dlvMutationVersion)dlvErr=isAbortError(e)?"Server lambat merespons. Mencoba lagi otomatis...":"Gagal memuat pesanan delivery ("+e.message+"). Mencoba lagi otomatis..."}
  finally{dlvLoading=false}
  drawDlvAll()}
-const syncMenuCatalog=async()=>{if(document.hidden||!me)return;if(await loadMenuAPI()&&menuCatalogChanged){if(view==="term")drawTerm();else if(view==="admin")drawAdmin()}};
+const posTime=s=>{const[d,t]=s.split(" "),[y,m,dd]=d.split("-").map(Number),[h,mi,se]=t.split(":").map(Number);return Date.UTC(y,m-1,dd,h,mi,se)-7*3600000};
+const posOrderFromRow=r=>({id:String(r.no_struk),time:posTime(r.waktu),q:+r.no_antrian||0,type:r.tipe_pesanan,pay:r.nama_metode||"-",cashier:r.nama_karyawan||"-",sub:+r.subtotal||0,disc:+r.diskon||0,ong:0,total:+r.total||0,cash:+r.nominal_bayar||0,customerName:"",phone:"",address:"",area:"",
+ items:(r.items||[]).map(i=>({name:i.catatan==="Add-on"?"+ "+i.nama_menu:i.nama_menu,q:+i.qty||0,price:+i.harga_satuan||0,disc:+i.diskon_item||0,note:i.catatan&&i.catatan!=="Add-on"?i.catatan:""}))});
+let ordersSyncing=false;
+async function syncOrders(){
+ if(!API||!me||!tok||ordersSyncing)return false;
+ ordersSyncing=true;const started=Date.now(),who=me;
+ try{
+  const r=await fto(API+"/api/transaksi/pos",{headers:hdr(),cache:"no-store"},15000);
+  if(!r.ok)throw new Error("HTTP "+r.status);
+  const rows=await r.json();if(!Array.isArray(rows))throw new Error("format order tidak valid");
+  if(me!==who)return false;
+  const server=rows.map(posOrderFromRow),ids=new Set(server.map(o=>o.id));
+  const fresh=orders.filter(o=>o.time>=started-10000&&!ids.has(o.id));   // order yang baru dibuat & belum terbaca server
+  const next=server.concat(fresh).sort((a,b)=>b.time-a.time);
+  const changed=JSON.stringify(next)!==JSON.stringify(orders);
+  if(changed){orders=next;save()}
+  store.s("bh_orders_ts",Date.now());
+  return changed;
+ }catch(e){console.error("Sinkron order gagal:",e);return false}
+ finally{ordersSyncing=false}}
+const syncMenuCatalog=async()=>{if(document.hidden||!me)return;
+ const[menuOk,ordersChanged]=await Promise.all([loadMenuAPI(),syncOrders()]);
+ if(!me)return;
+ let drawn=false;
+ if(menuOk&&menuCatalogChanged){if(view==="term"){drawTerm();drawn=true}else if(view==="admin"){drawAdmin();drawn=true}}
+ if(!drawn&&ordersChanged&&(view==="orders"||(view==="admin"&&(page==="dash"||page==="orders"))))redrawCurrent()};
 const startPoll=()=>{clearInterval(dlvT);clearInterval(menuSyncT);dlvSeen=null;dlvErr="";loadDlv();dlvT=setInterval(loadDlv,10000);menuSyncT=setInterval(syncMenuCatalog,15000)};
 const stopPoll=()=>{clearInterval(dlvT);clearInterval(menuSyncT);dlvT=null;menuSyncT=null;dlvMutationVersion++;dlv=[];dlvSeen=null;dlvSig="";tok=null;dlvBusy={}};
 let dlvMutationVersion=0;
@@ -1108,7 +1133,7 @@ async function loadMenuAPI(){
   cart=keepAvailableLines(cart);
   held=held.map(order=>({...order,cart:keepAvailableLines(order.cart)})).filter(order=>order.cart.length);
   if(store.g("bh_src","")!=="api"){held=[];cart=[];store.s("bh_src","api")}
-  API_MENU=true;save();return true}
+  API_MENU=true;save();store.s("bh_menu_ts",Date.now());return true}
  catch(e){API_MENU=false;return false}
  finally{menuSyncInProgress=false}}
 addEventListener("focus",syncMenuCatalog);
