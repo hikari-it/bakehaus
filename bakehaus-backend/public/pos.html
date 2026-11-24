@@ -401,19 +401,21 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"){const m=$("#pmenu")
 const SES="bh_session";
 const saveSes=()=>{try{if(me&&tok)sessionStorage.setItem(SES,JSON.stringify({me,tok,view,page}))}catch(e){}};
 const redrawCurrent=()=>{if(view==="term")drawTerm();else if(view==="orders")drawOrders();else if(view==="delivery")drawDelivery();else if(view==="admin")drawAdmin()};
+const bootMsg=on=>{let b=$("#boot");if(!b){b=document.createElement("div");b.id="boot";b.style.cssText="position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:var(--bg);font-weight:600;color:var(--mut)";b.textContent="Memuat data...";document.body.appendChild(b)}b.style.display=on?"grid":"none"};
 async function enterApp(f,r){
  me=f;$("#login").classList.add("hide");$("#app").classList.remove("hide");$("#me").textContent=f.name+" ("+f.role+")";tick();
+ bootMsg(true);
+ ["Term","Orders","Delivery","Admin"].forEach(n=>$("#v"+n).classList.add("hide"));
  const adm=f.role==="admin";$("#app").classList.toggle("adm",adm);const tabs=adm?[["admin","Dashboard"]]:[["term","Terminal"],["orders","Orders"],["delivery","Delivery"]];
  $("#tabs").innerHTML=tabs.map(t=>`<button class="tab" data-v="${t[0]}">${t[1]}</button>`).join("");
  document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>go(b.dataset.v));
- go(r&&tabs.some(t=>t[0]===r.view)?r.view:tabs[0][0]);       // langsung tampil
- if(adm&&r&&r.page&&r.page!=="dash"){page=r.page;drawAdmin()}
- startPoll();
  await loadMenuAPI();
- if(!me)return;                                              // 401 -> sudah logout
+ if(!me){bootMsg(false);return}                   // 401 -> sudah logout
  const usersFailed=adm&&!await loadUsers();
- if(!me)return;
- redrawCurrent();saveSes();                                  // segarkan setelah data server masuk
+ if(!me){bootMsg(false);return}
+ go(r&&tabs.some(t=>t[0]===r.view)?r.view:tabs[0][0]);
+ if(adm&&r&&r.page&&r.page!=="dash"){page=r.page;drawAdmin()}
+ startPoll();bootMsg(false);saveSes();
  if(usersFailed)alert("Gagal memuat data pengguna dari server. Anda tetap masuk; periksa koneksi lalu coba lagi.")}
 $("#lf").onsubmit=async e=>{e.preventDefault();const un=$("#u").value.trim().toLowerCase(),pw=$("#p").value;$("#err").textContent="";const f=await apiLogin(un,pw);
  if(!f){$("#err").textContent="Username atau password salah.";return}
