@@ -975,6 +975,36 @@ app.post('/api/transaksi', requireRole('admin', 'kasir'), async (req, res) => {
   }
 });
 
+app.get('/api/transaksi', requireRole('admin'), async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT v.*, v.tanggal_waktu AT TIME ZONE 'Asia/Jakarta' AS waktu, t.asal_pesanan, t.status_pesanan, mp.nama_metode, k.nama_karyawan,
+             dd.status_delivery, p.nama_pelanggan, p.no_telepon, dd.alamat_lengkap, dd.area_pengiriman,
+             COALESCE(dd.ongkir, 0) AS ongkir,
+             (v.total_tagihan + COALESCE(dd.ongkir, 0)) AS grand_total,
+             COALESCE(
+               (SELECT json_agg(json_build_object(
+                 'id_menu', d.id_menu, 'sku', m.sku, 'nama_menu', m.nama_menu,
+                 'qty', d.qty, 'harga_satuan', d.harga_satuan, 'subtotal_item', d.subtotal_item,
+                 'diskon_item', d.diskon_item, 'catatan', d.catatan
+               ))
+               FROM detail_transaksi d JOIN menu m ON m.id_menu = d.id_menu
+               WHERE d.no_struk = v.no_struk), '[]'
+             ) AS items
+      FROM v_transaksi_total v
+      JOIN transaksi t ON t.no_struk = v.no_struk
+      LEFT JOIN metode_pembayaran mp ON mp.id_metode = v.id_metode
+      LEFT JOIN karyawan k ON k.id_karyawan = v.id_karyawan
+      LEFT JOIN detail_delivery dd ON dd.no_struk = v.no_struk
+      LEFT JOIN pelanggan p ON p.id_pelanggan = dd.id_pelanggan
+      ORDER BY v.tanggal_waktu DESC LIMIT 150
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Gagal memuat riwayat transaksi' });
+  }
+});
+
 app.get('/api/transaksi/pos', requireRole('admin', 'kasir'), async (req, res) => {
   const isAdmin = String(req.user.role || '').toLowerCase() === 'admin';
   try {
