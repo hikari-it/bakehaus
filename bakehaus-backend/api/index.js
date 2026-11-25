@@ -891,5 +891,34 @@ app.get('/api/transaksi', requireRole('admin'), async (req, res) => {
   }
 });
 
+app.get('/api/transaksi/pos', requireRole('admin', 'kasir'), async (req, res) => {
+  const isAdmin = String(req.user.role || '').toLowerCase() === 'admin';
+  try {
+    const result = await db.query(
+      `SELECT t.no_struk,
+              to_char(t.tanggal_waktu, 'YYYY-MM-DD HH24:MI:SS') AS waktu,
+              t.no_antrian, t.tipe_pesanan, t.nominal_bayar,
+              mp.nama_metode, k.nama_karyawan,
+              v.subtotal, v.diskon, v.total_tagihan AS total,
+              COALESCE((SELECT json_agg(json_build_object(
+                  'nama_menu', m.nama_menu, 'qty', d.qty, 'harga_satuan', d.harga_satuan,
+                  'diskon_item', d.diskon_item, 'catatan', d.catatan) ORDER BY d.id_detail)
+                FROM detail_transaksi d JOIN menu m ON m.id_menu = d.id_menu
+                WHERE d.no_struk = t.no_struk), '[]') AS items
+       FROM transaksi t
+       JOIN v_transaksi_total v ON v.no_struk = t.no_struk
+       LEFT JOIN metode_pembayaran mp ON mp.id_metode = t.id_metode
+       LEFT JOIN karyawan k ON k.id_karyawan = t.id_karyawan
+       WHERE t.tipe_pesanan <> 'Delivery'
+         ${isAdmin ? '' : "AND t.tanggal_waktu::date = (NOW() AT TIME ZONE 'Asia/Jakarta')::date"}
+       ORDER BY t.tanggal_waktu DESC
+       LIMIT 3000`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Gagal memuat riwayat order' });
+  }
+});
+
 // Wajib diekspor sebagai handler Vercel Serverless
 module.exports = app;
